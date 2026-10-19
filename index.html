@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://api.github.com; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Patrimoine Desk</title>
+  <meta name="theme-color" content="#0b0c10">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <aside class="side">
+    <a href="#/accueil" class="logo"><span class="logo-mark">€</span><span>PATRIMOINE<small>desk</small></span></a>
+    <nav id="nav" class="nav" aria-label="Sections">
+      <a href="#/accueil" data-r="accueil"><svg viewBox="0 0 24 24"><path d="M3 13h8V3H3zm0 8h8v-6H3zm10 0h8V11h-8zm0-18v6h8V3z"/></svg>Tableau de bord</a>
+      <a href="#/patrimoine" data-r="patrimoine"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8v4h2V3h-8v2h4l-6 6-4-4-8 8z"/></svg>Patrimoine</a>
+      <a href="#/depenses" data-r="depenses"><svg viewBox="0 0 24 24"><path d="M4 20h3V10H4zm6.5 0h3V4h-3zM17 20h3v-7h-3z"/></svg>Dépenses</a>
+      <a href="#/actions" data-r="actions"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>Actions</a>
+    </nav>
+    <div class="side-foot">
+      <div class="sync"><span id="sync-dot" class="dot"></span><span id="sync-txt">Chargement…</span></div>
+      <button id="refresh" class="btn ghost" type="button">Synchroniser</button>
+      <a href="#/reglages" data-r="reglages" class="side-link">Réglages</a>
+    </div>
+  </aside>
+  <main id="view" class="main"></main>
+  <div id="tip" class="tip" hidden></div>
+</body>
+</html>
