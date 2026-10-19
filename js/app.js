@@ -23,7 +23,7 @@ const sum = (arr, f = (x) => x) => arr.reduce((s, x) => s + f(x), 0);
 // ---------------------------------------------------------------- chargement
 
 async function loadAll() {
-  if (!S.cfg.token) { render(); return; }
+  if (!S.cfg.token) { setSync("Token requis", ""); render(); return; }
   setSync("Synchronisation…", "");
   try {
     const store = new Store(S.cfg);
@@ -663,7 +663,7 @@ function bindSettings() {
     loadAll();
   };
   const fg = document.getElementById("forget");
-  if (fg) fg.onclick = () => { forgetToken(); S.cfg = loadConfig(); S.M = null; render(); };
+  if (fg) fg.onclick = () => { forgetToken(); S.cfg = loadConfig(); S.M = null; setSync("Token requis", ""); render(); };
 }
 
 $view.addEventListener("click", (e) => {
