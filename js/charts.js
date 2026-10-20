@@ -94,8 +94,14 @@ export function drawLines(root) {
       ${gaps.replaceAll("<line", `<line stroke="${color}"`)}
       <path d="${solid}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
       ${points.map((p, i) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" class="ax${p.v == null ? " off" : ""}">${esc(p.label)}</text>`).join("")}
-      ${real.map((p) => `<circle cx="${x(p.i)}" cy="${yy(p.v)}" r="4.5" fill="var(--surface)" stroke="${color}" stroke-width="2.5"/>
-        <rect x="${x(p.i) - 22}" y="${P.t}" width="44" height="${ch}" fill="transparent" data-tip="${esc(p.tip || "")}"/>`).join("")}
+      ${real.map((p) => {
+        // Série longue (cours quotidiens) : pas de rond par point, zone de survol = largeur d'un jour.
+        const dense = points.length > 40;
+        const w = dense ? Math.max(2, cw / points.length) : 44;
+        return `${dense ? "" : `<circle cx="${x(p.i)}" cy="${yy(p.v)}" r="4.5" fill="var(--surface)" stroke="${color}" stroke-width="2.5"/>`}
+        <rect x="${x(p.i) - w / 2}" y="${P.t}" width="${w}" height="${ch}" fill="transparent" data-tip="${esc(p.tip || "")}"/>`;
+      }).join("")}
+      ${points.length > 40 && real.length ? `<circle cx="${x(real.at(-1).i)}" cy="${yy(real.at(-1).v)}" r="4.5" fill="var(--surface)" stroke="${color}" stroke-width="2.5"/>` : ""}
     </svg>`;
   });
 }

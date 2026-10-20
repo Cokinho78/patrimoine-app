@@ -90,7 +90,39 @@ export function buildModel(files) {
     for (const [k, v] of Object.entries(soldes)) g[comptes[k]?.groupe || "cc"] += v;
     return g;
   };
+  M.peaLive = peaLive(files.get("patrimoine/positions_pea.json"), files.get("patrimoine/cours.json"));
+  // Patrimoine estimé au jour : dernier relevé mensuel, PEA revalorisé aux derniers cours.
+  M.patriEstime = M.peaLive && M.patriLast
+    ? { date: M.peaLive.date, total: M.patriLast.total - (M.patriLast.soldes.pea || 0) + M.peaLive.valeur }
+    : null;
   return M;
+}
+
+// Valeur quotidienne du PEA : quantités du dernier instantané ≤ jour × dernière clôture connue.
+function peaLive(pos, cours) {
+  const snaps = pos?.instantanes || [];
+  if (!snaps.length || !cours?.lignes) return null;
+  const L = cours.lignes;
+  const days = [...new Set(Object.values(L).flatMap((l) => Object.keys(l.clotures)))].filter((d) => d >= snaps[0].date).sort();
+  if (!days.length) return null;
+  const last = {};
+  const serie = days.map((d) => {
+    for (const [isin, l] of Object.entries(L)) if (l.clotures[d] != null) last[isin] = l.clotures[d];
+    const snap = snaps.filter((s) => s.date <= d).at(-1);
+    return { date: d, v: sum(snap.lignes, (x) => x.quantite * (last[x.isin] ?? x.pru)) };
+  });
+  const snap = snaps.at(-1);
+  const lignes = snap.lignes.map((x) => {
+    const cl = Object.entries(L[x.isin]?.clotures || {}).sort((a, b) => a[0].localeCompare(b[0]));
+    const cours = cl.at(-1)?.[1] ?? x.pru;
+    const veille = cl.at(-2)?.[1] ?? cours;
+    const valeur = x.quantite * cours;
+    return { ...x, ticker: L[x.isin]?.ticker || "", cours, valeur, pv: valeur - x.quantite * x.pru,
+      pvPct: cours / x.pru - 1, jourPct: cours / veille - 1 };
+  });
+  const valeur = sum(lignes, (l) => l.valeur);
+  return { date: days.at(-1), valeur, veille: serie.at(-2)?.v ?? valeur, serie, lignes, snapDate: snap.date,
+    investi: sum(lignes, (l) => l.quantite * l.pru), erreurs: cours.erreurs || [] };
 }
 
 export const ENVELOPES = [
