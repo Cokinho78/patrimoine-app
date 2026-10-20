@@ -1,7 +1,8 @@
 # patrimoine-app
 
 Tableau de bord patrimoine & dépenses (écran ordinateur + mobile) : patrimoine net, enveloppes,
-dépenses par mois › catégorie › marchand › transaction, actions chiffrées.
+dépenses par mois › catégorie › marchand › transaction, actions chiffrées,
+projet immo (cockpit, annonces notées, fiche + simulateur LMNP, marché DVF/ANIL, veille).
 
 Code uniquement — les données vivent dans un repo privé séparé (`patrimoine-data`), lues via l'API
 GitHub avec un token fine-grained **Contents : Read-only** stocké dans le navigateur.

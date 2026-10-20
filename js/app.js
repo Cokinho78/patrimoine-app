@@ -8,10 +8,14 @@ import {
   slugOf, catOfSlug, catColor, catIcon, catName,
 } from "./model.js";
 import { columns, line, drawLines, spark, meter, split } from "./charts.js";
+import { panel, kpi, delta, head, tabs } from "./ui.js";
+import { viewImmo, bindImmo } from "./immo.js";
+import { buildImmo } from "./immo-model.js";
 
 const S = {
   cfg: loadConfig(),
   M: null,
+  I: null,
   error: "",
   period: "12",
   tx: { q: "", cat: "", mois: "" },
@@ -28,7 +32,9 @@ async function loadAll() {
   try {
     const store = new Store(S.cfg);
     const files = (await store.listFiles()).filter((p) => p.endsWith(".json"));
-    S.M = buildModel(await store.readMany(files));
+    const data = await store.readMany(files);
+    S.M = buildModel(data);
+    S.I = buildImmo(data);
     S.error = "";
     setSync(store.offline ? "Hors ligne : dernières données" : `À jour · ${mYear(S.M.months.at(-1))}`, store.offline ? "" : "ok");
   } catch (e) {
@@ -44,32 +50,6 @@ function setSync(msg, cls) {
 }
 
 // ---------------------------------------------------------------- blocs
-
-const panel = (title, body, { right = "", cls = "" } = {}) => `
-  <section class="panel ${cls}">
-    <header class="panel-h"><h3>${title}</h3>${right ? `<div class="panel-r">${right}</div>` : ""}</header>
-    <div class="panel-b">${body}</div>
-  </section>`;
-
-const kpi = (label, value, sub = "", cls = "") => `
-  <div class="kpi ${cls}"><div class="lbl">${label}</div><div class="kpi-v">${value}</div>${sub ? `<div class="kpi-s">${sub}</div>` : ""}</div>`;
-
-const delta = (v, inverse = false) => {
-  const good = inverse ? v < 0 : v > 0;
-  return `<span class="${v === 0 ? "muted" : good ? "up" : "down"}">${v > 0 ? "▲" : v < 0 ? "▼" : "•"} ${eur(Math.abs(v))}</span>`;
-};
-
-const head = (crumbs, title, { sub = "", right = "" } = {}) => `
-  <div class="screen-h">
-    <div>
-      ${crumbs.length ? `<div class="crumb">${crumbs.map(([l, h]) => (h ? `<a href="${h}">${esc(l)}</a>` : esc(l))).join(" <span>›</span> ")}</div>` : ""}
-      <h1>${title}</h1>
-      ${sub ? `<div class="sub">${sub}</div>` : ""}
-    </div>
-    ${right ? `<div class="screen-r">${right}</div>` : ""}
-  </div>`;
-
-const tabs = (items, active) => `<nav class="subtabs">${items.map(([k, l, h]) => `<a href="${h}" class="${k === active ? "on" : ""}">${l}</a>`).join("")}</nav>`;
 
 const catChip = (cat, href) => `<a class="chip" href="${href || `#/depenses/cat/${slugOf(cat)}`}"><i style="background:${catColor(cat)}"></i>${esc(catName(cat))}</a>`;
 
@@ -151,7 +131,7 @@ function viewAccueil() {
     </div>
     ${kpi(`Épargne · ${fullRev.length} mois complets`, signed(ep12), `Taux ${pct(ep12 / rev12)} des revenus · ${signed(ep12 / fullRev.length)}/mois<span>AV comprise · cible ${eur(M.budget.epargne_cible || 0)}/mois</span>`, ep12 >= 0 ? "k-ok" : "k-bad")}
     ${kpi("Dépenses courantes · 3 mois", `${eur(dep3)}<small>/mois</small>`, `${meter(dep3, M.budgetCourant, dep3 > M.budgetCourant ? "#ff6b6b" : "#3b7bff")}Budget ${eur(M.budgetCourant)} · ${dep3 > M.budgetCourant ? `<span class="down">+${eur(dep3 - M.budgetCourant)}</span>` : `<span class="up">−${eur(M.budgetCourant - dep3)}</span>`}`)}
-    ${kpi("Actions ouvertes", `${actions.filter((a) => a.niveau !== "info").length}`, `<a href="#/actions">Voir le plan →</a>`)}
+    ${immoKpi() || kpi("Actions ouvertes", `${actions.filter((a) => a.niveau !== "info").length}`, `<a href="#/actions">Voir le plan →</a>`)}
   </div>
   <div class="grid g-21">
     ${panel("Évolution du patrimoine", patriLine, { right: `<a href="#/patrimoine">Détail par compte →</a>` })}
@@ -163,6 +143,13 @@ function viewAccueil() {
     ${panel("À faire en priorité", actions.filter((a) => a.niveau !== "info").slice(0, 3).map(actionCard).join("") || `<p class="empty">Rien d'urgent.</p>`, { right: `<a href="#/actions">Toutes les actions →</a>` })}
     ${panel(`Dépenses de ${mLong(lastM)}`, `<div class="bars">${top.map(([c, v]) => barRow(c, v, M.budgetCat(c), `#/depenses/cat/${slugOf(c)}/${lastM}`, Math.max(...top.map(([x, y]) => Math.max(y, M.budgetCat(x) || 0))))).join("")}</div>`, { right: `<a href="#/depenses/mois/${lastM}">Tout le mois →</a>` })}
   </div>`;
+}
+
+function immoKpi() {
+  const e = S.I?.cfg.etapes.find((x) => x.statut !== "fait");
+  if (!e) return "";
+  const reste = e.taches.filter((t) => !t.fait);
+  return kpi("Projet immo · prochaine étape", esc(e.titre), `${reste[0] ? esc(reste[0].t) : ""}<a href="#/immo">Ouvrir le projet →</a>`, "k-immo");
 }
 
 function barRow(cat, v, b, href, scale) {
@@ -646,10 +633,14 @@ function render() {
     if (a === "transactions") return viewTransactions();
     return viewDepenses();
   };
-  const views = { accueil: viewAccueil, patrimoine: () => viewPatrimoine(a), depenses: dep, actions: viewActions };
+  const views = {
+    accueil: viewAccueil, patrimoine: () => viewPatrimoine(a), depenses: dep, actions: viewActions,
+    immo: () => viewImmo(S.I, a, b),
+  };
   $view.innerHTML = (views[route] || viewAccueil)();
   drawLines($view);
   renderTxOut();
+  if (route === "immo") bindImmo($view, S.I);
 }
 
 function bindSettings() {
