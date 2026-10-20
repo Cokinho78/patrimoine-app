@@ -353,7 +353,7 @@ function viewMarche(I) {
 function viewVeille(I) {
   const al = I.cfg.alertes.map((x) => `<tr>
     <td><b>${esc(x.site)}</b></td>
-    <td><span class="flag ${x.statut === "a_creer" ? "f-todo" : "f-ok"}">${x.statut === "a_creer" ? "À créer" : x.statut === "automatique" ? "Automatique" : "Active"}</span></td>
+    <td><span class="flag ${["a_creer", "a_finaliser"].includes(x.statut) ? "f-todo" : "f-ok"}">${{ a_creer: "À créer", a_finaliser: "À finaliser", automatique: "Automatique" }[x.statut] || "Active"}</span></td>
     <td class="soft xs">${esc(x.reglage)}</td><td>${ext(x.url, "Ouvrir")}</td></tr>`).join("");
   const jr = I.journal.map((j) => `<article class="jr j-${j.type}"><div class="jr-h"><span class="tag">${j.type === "veille" ? "Veille" : j.type === "point" ? "Point hebdo" : "Note"}</span><b>${esc(j.titre)}</b><span class="muted xs">${dShort(j.date)} ${j.date.slice(0, 4)}</span></div>
     ${j.texte ? `<p>${esc(j.texte)}</p>` : ""}${j.actions?.length ? `<ol class="next">${j.actions.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>` : ""}</article>`).join("");
