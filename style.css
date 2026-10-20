@@ -501,3 +501,20 @@ code { font-size: 13px; background: var(--surface2); padding: 1px 6px; border-ra
   .hero-step .hv-sm { font-size: 34px; }
   .photos img { height: 140px; }
 }
+
+/* ---- tri et filtres de colonnes (js/tables.js) */
+th.sort-h { cursor: pointer; user-select: none; }
+th.sort-h:hover, th.sort-h:focus-visible { color: var(--text); outline: none; }
+th.sort-h::after { content: "↕"; margin-left: 5px; opacity: 0.35; font-size: 10px; }
+th.sort-h[aria-sort="ascending"]::after { content: "▲"; opacity: 1; color: var(--accent); }
+th.sort-h[aria-sort="descending"]::after { content: "▼"; opacity: 1; color: var(--accent); }
+th.sort-h[aria-sort="ascending"], th.sort-h[aria-sort="descending"] { color: var(--text); }
+.frow th { padding: 4px 6px 8px; border-bottom: 1px solid var(--line); }
+.fsel {
+  width: 100%; min-width: 80px; max-width: 180px; min-height: 30px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--sunken); color: var(--soft); font: 500 12px "Barlow", sans-serif; padding: 0 6px; text-transform: none; letter-spacing: 0;
+}
+.fsel:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tx-count:empty { display: none; }
+.ann th.att, .ann td.att { padding-left: 5px; padding-right: 5px; }
+.ann td.att b { display: inline-block; min-width: 26px; text-align: center; border-radius: 5px; padding: 1px 4px; }

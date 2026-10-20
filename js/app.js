@@ -8,6 +8,7 @@ import {
   slugOf, catOfSlug, catColor, catIcon, catName,
 } from "./model.js";
 import { columns, line, drawLines, spark, meter, split } from "./charts.js";
+import { enhanceTables } from "./tables.js";
 import { panel, kpi, delta, head, tabs } from "./ui.js";
 import { viewImmo, bindImmo } from "./immo.js";
 import { buildImmo } from "./immo-model.js";
@@ -418,22 +419,22 @@ function viewMois(m) {
       ${panel("Par catégorie", `<div class="bars">${rows}</div>`, { right: `<span class="muted xs">Clic = marchands et transactions</span>` })}
       ${panel("Plus grosses dépenses", `<div class="tlist">${big.map((t) => `<a class="trow" href="#/depenses/cat/${slugOf(t.cat)}/${m}"><span class="tname"><i class="sw" style="background:${catColor(t.cat)}"></i>${esc(t.marchand)}<small>${dShort(t.date)} · ${esc(catName(t.cat))}</small></span><span class="num"><b>${eur2(t.montant)}</b></span></a>`).join("")}</div>`)}
     </div>
-    ${panel(`Toutes les transactions · ${mLong(m)}`, txTable(txs, { showCat: true }))}`;
+    ${panel(`Toutes les transactions · ${mLong(m)}`, txTable(txs, { showCat: true, tid: "tx-mois" }))}`;
 }
 
-function txTable(txs, { showCat = false, showMonth = false, limit = 0 } = {}) {
-  const list = limit ? txs.slice(0, limit) : txs;
-  if (!list.length) return `<p class="empty">Aucune transaction.</p>`;
-  return `<div class="scroll-x"><table class="grid-t tx">
-    <thead><tr><th>Date</th><th>Libellé</th>${showCat ? "<th>Catégorie</th>" : ""}<th>Compte</th><th class="r">Montant</th></tr></thead>
-    <tbody>${list.map((t) => `<tr class="${t.type === "remboursement" ? "remb" : ""}">
-      <td class="num nowrap">${dShort(t.date)}${showMonth ? ` ${t.date.slice(2, 4)}` : ""}</td>
-      <td><b>${esc(t.marchand)}</b>${t.libelle && t.libelle !== t.marchand ? `<div class="xs muted">${esc(t.libelle)}</div>` : ""}</td>
-      ${showCat ? `<td>${catChip(t.cat, `#/depenses/cat/${slugOf(t.cat)}/${t.date.slice(0, 7)}`)}</td>` : ""}
+// Tableau triable (clic sur les en-têtes) avec filtres Catégorie / Compte ; `tid` garde le tri entre deux mois.
+function txTable(txs, { showCat = false, showMonth = false, tid = "tx" } = {}) {
+  if (!txs.length) return `<p class="empty">Aucune transaction.</p>`;
+  return `<div class="tx-count xs muted" data-count></div><div class="scroll-x"><table class="grid-t tx sortable" data-tid="${tid}">
+    <thead><tr><th>Date</th><th>Libellé</th>${showCat ? "<th data-filter>Catégorie</th>" : ""}<th data-filter>Compte</th><th class="r" data-dir="desc">Montant</th></tr></thead>
+    <tbody>${txs.map((t) => `<tr class="${t.type === "remboursement" ? "remb" : ""}">
+      <td class="num nowrap" data-v="${t.date}">${dShort(t.date)}${showMonth ? ` ${t.date.slice(2, 4)}` : ""}</td>
+      <td data-v="${esc(t.marchand)}"><b>${esc(t.marchand)}</b>${t.libelle && t.libelle !== t.marchand ? `<div class="xs muted">${esc(t.libelle)}</div>` : ""}</td>
+      ${showCat ? `<td data-f="${esc(catName(t.cat))}">${catChip(t.cat, `#/depenses/cat/${slugOf(t.cat)}/${t.date.slice(0, 7)}`)}</td>` : ""}
       <td class="xs muted">${esc(t.source)}</td>
-      <td class="r num nowrap">${t.montant < 0 ? `<span class="remb-v">−${eur2(-t.montant)}</span>` : eur2(t.montant)}</td>
+      <td class="r num nowrap" data-v="${t.montant}">${t.montant < 0 ? `<span class="remb-v">−${eur2(-t.montant)}</span>` : eur2(t.montant)}</td>
     </tr>`).join("")}</tbody>
-  </table></div>${limit && txs.length > limit ? `<p class="note">${txs.length - limit} autres lignes…</p>` : ""}`;
+  </table></div>`;
 }
 
 function viewCategories() {
@@ -492,10 +493,10 @@ function viewCategorie(slug, m) {
 
   const mer = merchants(txs);
   const sel = S.marchand && mer.find((x) => x.nom === S.marchand) ? S.marchand : "";
-  const merRows = mer.slice(0, 25).map((x) => `<tr class="${sel === x.nom ? "sel" : ""}">
+  const merRows = mer.map((x) => `<tr class="${sel === x.nom ? "sel" : ""}">
     <td><button type="button" class="linkbtn" data-marchand="${esc(x.nom)}"><b>${esc(x.nom)}</b></button></td>
-    <td class="r num">${x.n}</td><td class="r num"><b>${eur(x.tot)}</b></td><td class="r num muted">${tot ? pct(x.tot / tot) : ""}</td>
-    <td class="r num muted">${dShort(x.last)} ${x.last.slice(2, 4)}</td></tr>`).join("");
+    <td class="r num">${x.n}</td><td class="r num" data-v="${x.tot}"><b>${eur(x.tot)}</b></td><td class="r num muted" data-v="${tot ? x.tot / tot : 0}">${tot ? pct(x.tot / tot) : ""}</td>
+    <td class="r num muted" data-v="${x.last}">${dShort(x.last)} ${x.last.slice(2, 4)}</td></tr>`).join("");
   const list = (sel ? txs.filter((t) => t.marchand === sel) : txs).slice().sort((a, z) => z.date.localeCompare(a.date));
 
   return `${head([["Dépenses", "#/depenses"], ["Catégories", "#/depenses/categories"], [catName(cat)]], `${catIcon(cat)} ${esc(catName(cat))}`, { sub: periodLabel(), right: periodToggles() })}
@@ -509,8 +510,8 @@ function viewCategorie(slug, m) {
     </div>
     ${panel("Mois par mois", chart, { right: `<span class="muted xs">Clic sur un mois = détail du mois</span>` })}
     <div class="grid g-12">
-      ${panel("Marchands", `<div class="scroll-x"><table class="grid-t"><thead><tr><th>Marchand</th><th class="r">Nb</th><th class="r">Total</th><th class="r">Part</th><th class="r">Dernier</th></tr></thead><tbody>${merRows}</tbody></table></div>`, { right: `<span class="muted xs">Clic = filtrer</span>` })}
-      ${panel(sel ? `Transactions · ${esc(sel)}` : "Transactions", txTable(list, { showMonth: true, limit: 120 }), { right: sel ? `<button type="button" class="linkbtn" data-marchand="">Tout afficher ✕</button>` : "" })}
+      ${panel("Marchands", `<div class="scroll-x"><table class="grid-t sortable" data-tid="marchands"><thead><tr><th>Marchand</th><th class="r" data-dir="desc">Nb</th><th class="r" data-dir="desc">Total</th><th class="r" data-dir="desc">Part</th><th class="r" data-dir="desc">Dernier</th></tr></thead><tbody>${merRows}</tbody></table></div>`, { right: `<span class="muted xs">Clic = filtrer</span>` })}
+      ${panel(sel ? `Transactions · ${esc(sel)}` : "Transactions", txTable(list, { showMonth: true, tid: "tx-cat" }), { right: sel ? `<button type="button" class="linkbtn" data-marchand="">Tout afficher ✕</button>` : "" })}
     </div>`;
 }
 
@@ -532,7 +533,7 @@ function viewCatMois(cat, m) {
         <span class="num"><b>${x.tot < 0 ? `<span class="remb-v">−${eur2(-x.tot)}</span>` : eur2(x.tot)}</b></span>
         <span class="num xs muted">${v ? pct(x.tot / v) : ""}</span>
       </summary>
-      ${txTable(x.txs)}
+      ${txTable(x.txs, { tid: "tx-marchand" })}
     </details>`).join("");
 
   return `${head([["Dépenses", "#/depenses"], [catName(cat), `#/depenses/cat/${slug}`], [mLong(m)]], `${catIcon(cat)} ${esc(catName(cat))} · ${mLong(m)}`, { sub: `${txs.length} lignes · ${mer.length} marchand${mer.length > 1 ? "s" : ""}`, right: monthNav(`#/depenses/cat/${slug}/`, m) })}
@@ -567,7 +568,8 @@ function renderTxOut() {
     .filter((t) => (!S.tx.cat || t.cat === S.tx.cat) && (!S.tx.mois || t.mois === S.tx.mois)
       && (!q || `${t.marchand} ${t.libelle}`.toLowerCase().includes(q)))
     .sort((a, b) => b.date.localeCompare(a.date));
-  out.innerHTML = panel(`${list.length} lignes · ${eur2(sum(list, (t) => t.montant))} net`, txTable(list, { showCat: true, showMonth: true, limit: 300 }));
+  out.innerHTML = panel(`${list.length} lignes · ${eur2(sum(list, (t) => t.montant))} net`, txTable(list, { showCat: true, showMonth: true, tid: "tx-all" }));
+  enhanceTables(out);
 }
 
 // ---------------------------------------------------------------- actions & réglages
@@ -640,6 +642,7 @@ function render() {
   $view.innerHTML = (views[route] || viewAccueil)();
   drawLines($view);
   renderTxOut();
+  enhanceTables($view);
   if (route === "immo") bindImmo($view, S.I);
 }
 

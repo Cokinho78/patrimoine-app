@@ -4,8 +4,9 @@ import { esc, eur, pct, dShort } from "./util.js";
 import { panel, kpi, head, tabs } from "./ui.js";
 import { columns, line, drawLines, meter } from "./charts.js";
 import { SRC, STATUTS, analyse, loyerRef } from "./immo-model.js";
+import { enhanceTables } from "./tables.js";
 
-const ST = { commune: "", exclus: false, tri: "note", simu: {}, vente: "78146" };
+const ST = { commune: "", exclus: false, simu: {}, vente: "78146" };
 const pct1 = (x) => pct(x, 1);
 const m2fmt = (x) => (x == null ? "—" : `${Math.round(x).toLocaleString("fr-FR")} €/m²`);
 const today = () => new Date().toISOString().slice(0, 10);
@@ -113,16 +114,20 @@ function viewCockpit(I) {
           <p class="note">Prix médian des ventes réelles ≤ ${I.marche.petite_surface_max} m² (DVF 2023-2025) · loyer T1-T2 nu charges comprises (ANIL 2025). Le brut théorique ne compte ni frais de notaire ni charges.</p>`, { right: `<a href="#/immo/marche">Détail →</a>` })}
       </div>
     </div>
-    ${panel("Meilleures opportunités du moment", tableAnnonces(top), { right: `<a href="#/immo/annonces">Classement complet →</a>` })}`;
+    ${panel("Meilleures opportunités du moment", tableAnnonces(top, "ann-top"), { right: `<a href="#/immo/annonces">Classement complet →</a>` })}`;
 }
 
 // ------------------------------------------------------------ annonces
 
-function tableAnnonces(rows) {
+const ATTRS = [["Rendement", "Rdt"], ["Prix", "Prix"], ["Énergie", "Éner."], ["Copro", "Copro"], ["Secteur", "Sect."], ["Trésorerie", "Tréso"]];
+
+// Clic sur un en-tête = tri ; menus sous Ville / DPE / Verdict = filtres. `tid` garde l'état par tableau.
+function tableAnnonces(rows, tid = "ann") {
   if (!rows) return `<p class="empty">Aucune annonce.</p>`;
-  return `<div class="scroll-x"><table class="grid-t ann">
-    <thead><tr><th>Note</th><th>Bien</th><th class="r">Surface</th><th class="r">Prix FAI</th><th class="r">€/m² vs médiane</th><th>DPE</th>
-      <th class="r">Loyer HC est.</th><th class="r">Brut</th><th class="r">Cash-flow</th><th>Verdict</th></tr></thead>
+  return `<div class="scroll-x"><table class="grid-t ann sortable" data-tid="${tid}">
+    <thead><tr><th data-dir="desc">Note</th><th data-filter>Bien</th><th class="r" data-dir="desc">Surface</th><th class="r">Prix FAI</th><th class="r">€/m² vs médiane</th><th data-filter>DPE</th>
+      ${ATTRS.map(([k, l]) => `<th class="r att" data-dir="desc" title="Note ${k} /20">${l}</th>`).join("")}
+      <th class="r" data-dir="desc">Loyer HC est.</th><th class="r" data-dir="desc">Brut</th><th class="r" data-dir="desc">Cash-flow</th><th data-filter>Verdict</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
 
@@ -132,32 +137,25 @@ function rowAnnonce(I, a, x) {
   const nouveau = daysTo(a.premiere_vue) >= -7;
   const baisse = a.historique_prix?.length > 1 && a.historique_prix.at(-1).prix < a.historique_prix[0].prix;
   return `<tr class="clk ${x.exclus.length ? "out" : ""}" data-href="${href(a.id)}">
-    <td>${noteBadge(x.note)}</td>
-    <td class="bien"><a href="${href(a.id)}"><b>${esc(a.ville)}</b>${a.quartier ? ` <span class="muted">· ${esc(a.quartier)}</span>` : ""}
+    <td data-v="${x.note}">${noteBadge(x.note)}</td>
+    <td class="bien" data-v="${esc(a.ville)}" data-f="${esc(a.ville)}"><a href="${href(a.id)}"><b>${esc(a.ville)}</b>${a.quartier ? ` <span class="muted">· ${esc(a.quartier)}</span>` : ""}
       ${nouveau ? `<span class="flag f-new">Nouveau</span>` : ""}${baisse ? `<span class="flag f-down">Prix en baisse</span>` : ""}${st !== "nouveau" ? `<span class="flag f-st">${STATUTS[st]}</span>` : ""}
       <small>${esc(a.titre).slice(0, 70)}</small></a></td>
-    <td class="r num">${a.surface ? `${String(a.surface).replace(".", ",")} m²` : "—"}<small class="muted">${a.pieces ? ` · ${a.pieces}p` : ""}</small></td>
-    <td class="r num"><b>${eur(a.prix)}</b></td>
-    <td class="r num">${m2fmt(x.m2)} ${ecart == null ? "" : `<small class="${ecart > 0.1 ? "down" : ecart < 0 ? "up" : "muted"}">${ecart > 0 ? "+" : "−"}${Math.round(Math.abs(ecart) * 100)} %</small>`}</td>
-    <td>${dpeChip(a.dpe)}</td>
-    <td class="r num">${x.h.loyer_hc.v ? eur(x.h.loyer_hc.v) : "—"}</td>
-    <td class="r num"><b>${pct1(x.sim.rdtBrut)}</b></td>
-    <td class="r num ${x.sim.cfApres < 0 ? "down" : "up"}">${x.sim.cfApres < 0 ? "−" : "+"}${eur(Math.abs(x.sim.cfApres))}<small class="muted">/mois</small></td>
-    <td>${verdictTag(x.verdict)}</td>
+    <td class="r num" data-v="${a.surface ?? ""}">${a.surface ? `${String(a.surface).replace(".", ",")} m²` : "—"}<small class="muted">${a.pieces ? ` · ${a.pieces}p` : ""}</small></td>
+    <td class="r num" data-v="${a.prix}"><b>${eur(a.prix)}</b></td>
+    <td class="r num" data-v="${x.m2 ?? ""}">${m2fmt(x.m2)} ${ecart == null ? "" : `<small class="${ecart > 0.1 ? "down" : ecart < 0 ? "up" : "muted"}">${ecart > 0 ? "+" : "−"}${Math.round(Math.abs(ecart) * 100)} %</small>`}</td>
+    <td data-v="${/^[A-G]$/.test(a.dpe || "") ? a.dpe : "Z"}" data-f="${/^[A-G]$/.test(a.dpe || "") ? a.dpe : "?"}">${dpeChip(a.dpe)}</td>
+    ${ATTRS.map(([k]) => `<td class="r num att" data-v="${x.attrs[k] ?? ""}"><b class="${noteCls(x.attrs[k])}">${x.attrs[k] == null ? "–" : Math.round(x.attrs[k])}</b></td>`).join("")}
+    <td class="r num" data-v="${x.h.loyer_hc.v || ""}">${x.h.loyer_hc.v ? eur(x.h.loyer_hc.v) : "—"}</td>
+    <td class="r num" data-v="${x.sim.rdtBrut}"><b>${pct1(x.sim.rdtBrut)}</b></td>
+    <td data-v="${x.sim.cfApres}" class="r num ${x.sim.cfApres < 0 ? "down" : "up"}">${x.sim.cfApres < 0 ? "−" : "+"}${eur(Math.abs(x.sim.cfApres))}<small class="muted">/mois</small></td>
+    <td data-f="${esc(x.verdict.lbl)}">${verdictTag(x.verdict)}</td>
   </tr>`;
 }
 
 function viewAnnonces(I) {
   const communes = I.cfg.criteres.communes;
-  let list = ranked(I, { exclus: ST.exclus }).filter(({ a }) => !ST.commune || a.insee === ST.commune);
-  const tri = {
-    note: (p, q) => q.x.note - p.x.note,
-    rdt: (p, q) => q.x.sim.rdtBrut - p.x.sim.rdtBrut,
-    prix: (p, q) => p.a.prix - q.a.prix,
-    m2: (p, q) => (p.x.m2 || 1e9) - (q.x.m2 || 1e9),
-    date: (p, q) => (q.a.premiere_vue || "").localeCompare(p.a.premiere_vue || "") || q.x.note - p.x.note,
-  }[ST.tri];
-  list = list.sort(tri);
+  const list = ranked(I, { exclus: ST.exclus }).filter(({ a }) => !ST.commune || a.insee === ST.commune);
   const retirees = I.annonces.filter((a) => !a.actif);
   const nbEx = I.annonces.filter((a) => a.actif && I.analyses.get(a.id).exclus.length).length;
 
@@ -165,10 +163,9 @@ function viewAnnonces(I) {
     ${immoTabs("annonces")}
     <div class="filters">
       <div class="seg">${[["", "Toutes"], ...communes.map((c) => [c.insee, c.nom.replace("-sur-Seine", "")])].map(([k, l]) => `<button type="button" data-icommune="${k}" aria-pressed="${ST.commune === k}">${esc(l)}</button>`).join("")}</div>
-      <select class="dsel" id="i-tri">${[["note", "Tri : note"], ["rdt", "Tri : rendement"], ["prix", "Tri : prix"], ["m2", "Tri : €/m²"], ["date", "Tri : plus récentes"]].map(([k, l]) => `<option value="${k}" ${ST.tri === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <label class="tgl"><input type="checkbox" id="i-exclus" ${ST.exclus ? "checked" : ""}> Afficher les écartées</label>
     </div>
-    ${panel("Classement", tableAnnonces(list.map(({ a, x }) => rowAnnonce(I, a, x)).join("")), { right: `<span class="muted xs">Note /20 = rendement ×3, prix vs marché ×2, DPE ×2, secteur ×2, copro, trésorerie</span>` })}
+    ${panel("Classement", tableAnnonces(list.map(({ a, x }) => rowAnnonce(I, a, x)).join("")), { right: `<span class="muted xs">Clic sur une colonne = tri · Note /20 = rendement ×3, prix vs marché ×2, DPE ×2, secteur ×2, copro, trésorerie</span>` })}
     ${retirees.length ? panel(`Retirées du marché · ${retirees.length}`, `<div class="tlist">${retirees.map((a) => `<a class="trow" href="${href(a.id)}"><span class="tname">${esc(a.ville)} · ${a.surface} m²<small>${esc(a.titre).slice(0, 60)}</small></span><span class="num">${eur(a.prix)}</span><span class="num muted xs">vue du ${dShort(a.premiere_vue)} au ${dShort(a.retrait || a.derniere_vue)}</span></a>`).join("")}</div>
       <p class="note">Une annonce retirée vite = un prix juste. Ça calibre tes offres.</p>`) : ""}`;
 }
@@ -389,7 +386,6 @@ export function bindImmo($view, I) {
     if (row && !e.target.closest("a")) location.hash = row.dataset.href;
   };
   $view.onchange = (e) => {
-    if (e.target.id === "i-tri") { ST.tri = e.target.value; rerender($view, I); }
     if (e.target.id === "i-exclus") { ST.exclus = e.target.checked; rerender($view, I); }
   };
   $view.oninput = (e) => {
@@ -414,4 +410,5 @@ function rerender($view, I) {
   const [, , sub = "", arg = ""] = location.hash.split("/");
   $view.innerHTML = viewImmo(I, sub, arg);
   drawLines($view);
+  enhanceTables($view);
 }
