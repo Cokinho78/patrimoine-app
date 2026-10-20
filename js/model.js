@@ -90,16 +90,21 @@ export function buildModel(files) {
     for (const [k, v] of Object.entries(soldes)) g[comptes[k]?.groupe || "cc"] += v;
     return g;
   };
-  M.peaLive = peaLive(files.get("patrimoine/positions_pea.json"), files.get("patrimoine/cours.json"));
-  // Patrimoine estimé au jour : dernier relevé mensuel, PEA revalorisé aux derniers cours.
-  M.patriEstime = M.peaLive && M.patriLast
-    ? { date: M.peaLive.date, total: M.patriLast.total - (M.patriLast.soldes.pea || 0) + M.peaLive.valeur }
+  const cours = files.get("patrimoine/cours.json");
+  M.peaLive = live(files.get("patrimoine/positions_pea.json"), cours);
+  M.avLive = live(files.get("patrimoine/positions_av.json"), cours);
+  // Patrimoine estimé au jour : dernier relevé mensuel, PEA et AV revalorisés aux derniers cours.
+  const lv = [["pea", M.peaLive], ["av_bnp", M.avLive]].filter(([, x]) => x);
+  M.patriEstime = lv.length && M.patriLast
+    ? { date: lv.map(([, x]) => x.date).sort().at(-1), enveloppes: lv.map(([k]) => k),
+        total: M.patriLast.total + sum(lv, ([k, x]) => x.valeur - (M.patriLast.soldes[k] || 0)) }
     : null;
   return M;
 }
 
-// Valeur quotidienne du PEA : quantités du dernier instantané ≤ jour × dernière clôture connue.
-function peaLive(pos, cours) {
+// Valeur quotidienne d'une enveloppe : quantités du dernier instantané ≤ jour × dernière clôture connue.
+// Ligne sans cotation : valeur de part figée au relevé (vl). Fonds euros : montant constant.
+function live(pos, cours) {
   const snaps = pos?.instantanes || [];
   if (!snaps.length || !cours?.lignes) return null;
   const L = cours.lignes;
@@ -109,20 +114,21 @@ function peaLive(pos, cours) {
   const serie = days.map((d) => {
     for (const [isin, l] of Object.entries(L)) if (l.clotures[d] != null) last[isin] = l.clotures[d];
     const snap = snaps.filter((s) => s.date <= d).at(-1);
-    return { date: d, v: sum(snap.lignes, (x) => x.quantite * (last[x.isin] ?? x.pru)) };
+    return { date: d, v: (snap.fonds_euros || 0) + sum(snap.lignes, (x) => x.quantite * (last[x.isin] ?? x.vl ?? x.pru)) };
   });
   const snap = snaps.at(-1);
   const lignes = snap.lignes.map((x) => {
     const cl = Object.entries(L[x.isin]?.clotures || {}).sort((a, b) => a[0].localeCompare(b[0]));
-    const cours = cl.at(-1)?.[1] ?? x.pru;
+    const cours = cl.at(-1)?.[1] ?? x.vl ?? x.pru;
     const veille = cl.at(-2)?.[1] ?? cours;
     const valeur = x.quantite * cours;
-    return { ...x, ticker: L[x.isin]?.ticker || "", cours, valeur, pv: valeur - x.quantite * x.pru,
+    return { ...x, ticker: L[x.isin]?.ticker || "", fige: !cl.length, cours, valeur, pv: valeur - x.quantite * x.pru,
       pvPct: cours / x.pru - 1, jourPct: cours / veille - 1 };
   });
-  const valeur = sum(lignes, (l) => l.valeur);
-  return { date: days.at(-1), valeur, veille: serie.at(-2)?.v ?? valeur, serie, lignes, snapDate: snap.date,
-    investi: sum(lignes, (l) => l.quantite * l.pru), erreurs: cours.erreurs || [] };
+  const euros = snap.fonds_euros || 0;
+  const valeur = euros + sum(lignes, (l) => l.valeur);
+  return { date: days.at(-1), valeur, veille: serie.at(-2)?.v ?? valeur, serie, lignes, euros, snapDate: snap.date,
+    investi: euros + sum(lignes, (l) => l.quantite * l.pru), erreurs: cours.erreurs || [] };
 }
 
 export const ENVELOPES = [

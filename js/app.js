@@ -127,7 +127,7 @@ function viewAccueil() {
     <div class="hero">
       <div class="lbl">Patrimoine net${M.patriEstime ? ` · estimé au ${dShort(M.patriEstime.date)}` : ""}</div>
       <div class="hero-v">${eur(M.patriEstime ? M.patriEstime.total : L.total)}</div>
-      ${M.patriEstime ? `<div class="hero-d"><span class="muted">Relevé de ${mLong(L.mois)} : ${eur(L.total)}, PEA revalorisé au cours du jour</span> ${delta(M.patriEstime.total - L.total)}
+      ${M.patriEstime ? `<div class="hero-d"><span class="muted">Relevé de ${mLong(L.mois)} : ${eur(L.total)}, ${M.patriEstime.enveloppes.length > 1 ? "PEA et assurance-vie revalorisés" : "PEA revalorisé"} au cours du jour</span> ${delta(M.patriEstime.total - L.total)}
         <a href="#/patrimoine/pea" class="xs">PEA →</a></div>` : ""}
       <div class="hero-d">${prev ? `${delta(L.total - prev.total)} <span class="muted">${mShort(L.mois)} vs ${mShort(prev.mois)}</span>` : ""}
         <span class="sep"></span>${delta(L.total - first.total)} <span class="muted">depuis ${mYear(first.mois)} (${pct((L.total - first.total) / first.total, 1)})</span></div>
@@ -260,46 +260,55 @@ function viewLivrets(t) {
     ${actionsFor("Livrets") + actionsFor("Projet locatif")}`;
 }
 
-function viewPeaLive(t) {
+function viewLive(kind, t) {
   const M = S.M;
-  const P = M.peaLive;
+  const av = kind === "av";
+  const P = av ? M.avLive : M.peaLive;
   const L = M.patriLast;
+  const key = av ? "av_bnp" : "pea";
+  const nom = av ? "Assurance-vie BNP" : "PEA Boursorama";
+  const color = av ? "#8b5cf6" : "#ffb35c";
   const jour = P.valeur - P.veille;
   const pv = P.valeur - P.investi;
   const plafond = M.pos.pea?.versements_estimes || P.investi;
   const rows = P.lignes.map((l) => `<tr>
-    <td data-v="${esc(l.nom)}"><b>${esc(l.nom)}</b><div class="xs muted">${esc(l.ticker)} · ${esc(l.isin)}</div></td>
-    <td class="r num" data-v="${l.quantite}">${l.quantite.toLocaleString("fr-FR")}</td>
+    <td data-v="${esc(l.nom)}"><b>${esc(l.nom)}</b><div class="xs muted">${l.fige ? `<span class="warn">valeur figée au ${dShort(P.snapDate)}</span>` : esc(l.ticker)} · ${esc(l.isin)}</div></td>
+    <td class="r num" data-v="${l.quantite}">${l.quantite.toLocaleString("fr-FR", { maximumFractionDigits: 4 })}</td>
     <td class="r num" data-v="${l.pru}">${eur(l.pru, 2)}</td>
-    <td class="r num" data-v="${l.cours}">${eur(l.cours, 2)} <small class="${l.jourPct >= 0 ? "up" : "down"}">${l.jourPct >= 0 ? "+" : "−"}${pct(Math.abs(l.jourPct), 1)}</small></td>
+    <td class="r num" data-v="${l.cours}">${eur(l.cours, 2)} ${l.fige ? "" : `<small class="${l.jourPct >= 0 ? "up" : "down"}">${l.jourPct >= 0 ? "+" : "−"}${pct(Math.abs(l.jourPct), 1)}</small>`}</td>
     <td class="r num" data-v="${l.valeur}"><b>${eur(l.valeur)}</b></td>
     <td class="r num" data-v="${l.valeur / P.valeur}">${pct(l.valeur / P.valeur)}</td>
     <td class="r num ${l.pv >= 0 ? "up" : "down"}" data-v="${l.pv}">${signed(l.pv)}</td>
     <td class="r num ${l.pvPct >= 0 ? "up" : "down"}" data-v="${l.pvPct}">${l.pvPct >= 0 ? "+" : "−"}${pct(Math.abs(l.pvPct), 1)}</td>
   </tr>`).join("");
   const courbe = line(P.serie.map((p, i) => ({
-    label: i === 0 || p.date.slice(8) <= "07" && P.serie[i - 1]?.date.slice(5, 7) !== p.date.slice(5, 7) ? mShort(p.date.slice(0, 7)) : "",
+    label: P.serie.length <= 31 ? dShort(p.date)
+      : i === 0 || p.date.slice(8) <= "07" && P.serie[i - 1]?.date.slice(5, 7) !== p.date.slice(5, 7) ? mShort(p.date.slice(0, 7)) : "",
     v: p.v, tip: `${dShort(p.date)} ${p.date.slice(2, 4)}\n${eur(p.v)}`,
-  })), { height: 240, color: "#ffb35c" });
-  return `${head([["Patrimoine", "#/patrimoine"], ["PEA Boursorama"]], "PEA Boursorama", { sub: `${eur(P.valeur)} au cours de clôture du ${dShort(P.date)} · positions du ${dShort(P.snapDate)} ${P.snapDate.slice(0, 4)}` })}
+  })), { height: 240, color });
+  const euros = P.euros ? `<tr><td data-v="Fonds euros"><b>Fonds euros</b><div class="xs muted">capital garanti · montant constant entre deux relevés</div></td><td></td><td></td><td></td>
+    <td class="r num" data-v="${P.euros}"><b>${eur(P.euros)}</b></td><td class="r num" data-v="${P.euros / P.valeur}">${pct(P.euros / P.valeur)}</td><td></td><td></td></tr>` : "";
+  const nbFige = P.lignes.filter((l) => l.fige).length;
+  return `${head([["Patrimoine", "#/patrimoine"], [nom]], nom, { sub: `${eur(P.valeur)} au cours de clôture du ${dShort(P.date)} · positions du ${dShort(P.snapDate)} ${P.snapDate.slice(0, 4)}` })}
     ${t}
     <div class="grid g-4">
-      ${kpi(`Valeur au ${dShort(P.date)}`, eur(P.valeur), `Relevé ${mLong(L.mois)} : ${eur(L.soldes.pea || 0)}`)}
+      ${kpi(`Valeur au ${dShort(P.date)}`, eur(P.valeur), `Relevé ${mLong(L.mois)} : ${eur(L.soldes[key] || 0)}`)}
       ${kpi("Variation du jour", signed(jour), `${jour >= 0 ? "+" : "−"}${pct(Math.abs(jour / P.veille), 2)} vs clôture précédente`, jour >= 0 ? "k-ok" : "k-bad")}
       ${kpi("Plus-value latente", signed(pv), `${pv >= 0 ? "+" : "−"}${pct(Math.abs(pv / P.investi), 1)} sur ${eur(P.investi)} investis (PRU)`, pv >= 0 ? "k-ok" : "k-bad")}
-      ${kpi("Plafond de versements", pct(plafond / 150000, 1), `${meter(plafond, null, "#ffb35c", 150000)}${eur(plafond)} versés (estimé) / 150 000 €`)}
+      ${av ? kpi("Versement programmé", `${eur(M.pos.av_bnp?.versement_mensuel || 0)}<small>/mois</small>`, "Cardif, prélèvement automatique : non compté dans l'estimation avant le relevé")
+        : kpi("Plafond de versements", pct(plafond / 150000, 1), `${meter(plafond, null, "#ffb35c", 150000)}${eur(plafond)} versés (estimé) / 150 000 €`)}
     </div>
-    ${panel("Valeur quotidienne", courbe, { right: `<span class="muted xs">Quantités du dernier relevé de positions × cours de clôture Euronext</span>` })}
-    ${panel(`Lignes · cours du ${dShort(P.date)}`, `<div class="scroll-x"><table class="grid-t sortable" data-tid="pea-live">
+    ${panel("Valeur quotidienne", courbe, { right: `<span class="muted xs">Parts du dernier relevé × cours de clôture</span>` })}
+    ${panel(`Lignes · cours du ${dShort(P.date)}`, `<div class="scroll-x"><table class="grid-t sortable" data-tid="${kind}-live">
       <thead><tr><th>Ligne</th><th class="r" data-dir="desc">Qté</th><th class="r" data-dir="desc">PRU</th><th class="r" data-dir="desc">Cours</th><th class="r" data-dir="desc">Valeur</th><th class="r" data-dir="desc">Poids</th><th class="r" data-dir="desc">+/- value</th><th class="r" data-dir="desc">%</th></tr></thead>
-      <tbody>${rows}</tbody></table></div>
-      <p class="note">Estimation : un achat ou une vente non signalé fausse le calcul jusqu'au prochain export des positions (Boursorama › PEA › Positions › Exporter).${P.erreurs.length ? ` Cours indisponibles : ${esc(P.erreurs.join(", "))}.` : ""}</p>`)}
-    ${actionsFor("PEA")}`;
+      <tbody>${rows}${euros}</tbody></table></div>
+      <p class="note">Estimation : ${av ? `les nouveaux versements et arbitrages ne sont pris en compte qu'au relevé suivant.${nbFige ? ` ${nbFige} support${nbFige > 1 ? "s" : ""} sans cotation automatique fiable : valeur figée au relevé.` : ""}` : "un achat ou une vente non signalé fausse le calcul jusqu'au prochain export des positions (Boursorama › PEA › Positions › Exporter)."}</p>`)}
+    ${actionsFor(av ? "Assurance-vie" : "PEA")}`;
 }
 
 function viewPositions(kind, t) {
   const M = S.M;
-  if (kind === "pea" && M.peaLive) return viewPeaLive(t);
+  if ((kind === "pea" && M.peaLive) || (kind === "av" && M.avLive)) return viewLive(kind, t);
   const L = M.patriLast;
   const key = kind === "av" ? "av_bnp" : "pea";
   const p = M.pos[key] || { lignes: [] };
