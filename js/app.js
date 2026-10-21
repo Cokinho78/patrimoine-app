@@ -744,7 +744,33 @@ function sorareDecision(D) {
     <div class="callout"><div class="lbl">Interprétation · enveloppe ${eur(D.enveloppe_eur)}</div><p>${esc(D.interpretation)}</p></div>
     <p class="note"><b>À vérifier :</b> ${D.a_verifier.map(esc).join(" · ")}<br>
       Sources : ${D.sources.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.titre)}</a>`).join(" · ")}.
-      Aide à la décision chiffrée, pas un conseil en investissement : c'est toi qui tranches.</p>`);
+      Aide à la décision chiffrée, pas un conseil en investissement : c'est toi qui tranches.</p>`) + sorareVente(D);
+}
+
+function sorareVente(D) {
+  const P = D.plan_vente;
+  if (!P?.length) return "";
+  const reste = P.filter((x) => !x.vendu);
+  const LOTS = { 1: "1 · 5 € et plus", 2: "2 · 1 à 5 €", 3: "3 · moins de 1 €" };
+  const rows = P.map((x) => `<tr${x.vendu ? ' class="muted"' : ""}>
+    <td data-v="${x.lot}">${LOTS[x.lot]}</td>
+    <td data-v="${esc(x.joueur)}"><b>${esc(x.joueur)}</b> <span class="xs muted">${x.saison}</span></td>
+    <td class="r num" data-v="${x.prix_conseille_eur}"><b>${eur(x.prix_conseille_eur, 2)}</b></td>
+    <td class="r num" data-v="${x.mediane_eur ?? -1}">${x.mediane_eur == null ? "—" : eur(x.mediane_eur, 2)}</td>
+    <td class="r num" data-v="${x.plancher_eur ?? -1}">${x.plancher_eur == null ? "—" : eur(x.plancher_eur, 2)}</td>
+    <td data-v="${x.vendu ? 1 : 0}">${x.vendu ? "vendue" : "à vendre"}</td></tr>`).join("");
+  return panel(`Plan de vente · ${esc(D.choix?.decision || "")} · ${dShort(D.choix?.date || D.date)}`, `
+    <div class="grid g-4">
+      ${kpi("Cartes à vendre", `${reste.length} / ${P.length}`)}
+      ${kpi("Prix conseillés", eur(sum(reste, (x) => x.prix_conseille_eur)), "avant frais de revente")}
+      ${kpi("Net estimé", eur(sum(reste, (x) => x.prix_conseille_eur) * 0.95), "après 5 % de frais (à vérifier)")}
+      ${kpi("Lot 1 en premier", eur(sum(reste.filter((x) => x.lot === 1), (x) => x.prix_conseille_eur)), `${reste.filter((x) => x.lot === 1).length} cartes à 5 € ou plus`)}
+    </div>
+    ${D.choix?.note ? `<p class="note">${esc(D.choix.note)}</p>` : ""}
+    <div class="scroll-x"><table class="grid-t sortable" data-tid="sorare-vente">
+      <thead><tr><th>Lot</th><th>Carte</th><th class="r" data-dir="desc">Prix conseillé</th><th class="r" data-dir="desc">Médiane</th><th class="r" data-dir="desc">Plancher saison</th><th>Statut</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <p class="note">Mise en vente à faire sur Sorare. Une carte toujours pas vendue après une semaine : baisser de 10 à 20 %.</p>`);
 }
 
 // ---------------------------------------------------------------- routeur
