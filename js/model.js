@@ -95,6 +95,9 @@ export function buildModel(files) {
   M.avLive = live(files.get("patrimoine/positions_av.json"), cours);
   // Épargne salariale : FCPE non cotés, on garde le dernier relevé Natixis tel quel.
   M.esPos = files.get("patrimoine/positions_es.json")?.instantanes?.at(-1) || null;
+  // Loisir – Sorare : valorisé par sorare_valo.py, affiché hors du total financier.
+  M.sorare = files.get("sorare/valo.json") || null;
+  M.sorareHisto = files.get("sorare/historique.json") || [];
   // Patrimoine estimé au jour : dernier relevé mensuel, PEA et AV revalorisés aux derniers cours.
   const lv = [["pea", M.peaLive], ["av_bnp", M.avLive]].filter(([, x]) => x);
   M.patriEstime = lv.length && M.patriLast

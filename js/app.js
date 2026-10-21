@@ -180,8 +180,9 @@ function viewPatrimoine(sub) {
   const M = S.M;
   const t = tabs([["", "Synthèse", "#/patrimoine"], ["livrets", "Livrets", "#/patrimoine/livrets"],
     ["av", "Assurance-vie", "#/patrimoine/av"], ["pea", "PEA", "#/patrimoine/pea"],
-    ["salariale", "Épargne salariale", "#/patrimoine/salariale"]], sub || "");
+    ["salariale", "Épargne salariale", "#/patrimoine/salariale"], ["sorare", "Loisir – Sorare", "#/patrimoine/sorare"]], sub || "");
   if (sub === "livrets") return viewLivrets(t);
+  if (sub === "sorare") return viewSorare(t);
   if (sub === "salariale") return viewSalariale(t);
   if (sub === "av" || sub === "pea") return viewPositions(sub, t);
 
@@ -225,6 +226,7 @@ function viewPatrimoine(sub) {
   return `${head([["Patrimoine"]], "Patrimoine", { sub: `${eur(L.total)} au ${mLong(L.mois)}` })}
     ${t}
     <div class="grid g-5">${tiles}</div>
+    ${M.sorare ? `<p class="note">Hors total : <a href="#/patrimoine/sorare">Loisir – Sorare ${eur(M.sorare.total_prudent_eur)}</a> (valeur prudente du ${dShort(M.sorare.date)}).</p>` : ""}
     ${panel("Évolution par enveloppe", `${cols}<div class="legend">${ENVELOPES.map((e) => `<span><i style="background:${e.color}"></i>${e.nom}</span>`).join("")}<span class="muted">n.r. = mois non renseigné</span></div>`)}
     ${panel("Soldes de fin de mois", table)}`;
 }
@@ -695,6 +697,36 @@ function viewReglages() {
     </ol>
     <p class="note">Le token reste dans ce navigateur. Il ne permet que de lire patrimoine-data. Le code de la page est public ; les données ne le sont pas.</p>`)}
   </div>`;
+}
+
+function viewSorare(t) {
+  const V = S.M.sorare;
+  const crumbs = [["Patrimoine", "#/patrimoine"], ["Loisir – Sorare"]];
+  if (!V) return `${head(crumbs, "Loisir – Sorare")}${t}<p class="muted">Lancer <code>python3 sorare_valo.py</code> pour la première valorisation.</p>`;
+  const H = S.M.sorareHisto;
+  const prev = H.length > 1 ? H.at(-2) : null;
+  const vieille = (c) => !c.derniere_vente || (Date.parse(V.date) - Date.parse(c.derniere_vente)) / 864e5 > 90;
+  const rows = V.cartes.map((c) => `<tr>
+    <td data-v="${esc(c.joueur)}"><b>${esc(c.joueur)}</b><div class="xs muted">${esc(c.club || "sans club")} · ${esc(c.poste || "")}</div></td>
+    <td class="r num" data-v="${c.saison}">${c.saison}</td>
+    <td class="r num" data-v="${c.score_l15 ?? -1}">${c.score_l15 ?? "—"}</td>
+    <td class="r num" data-v="${c.mediane_eur ?? -1}">${c.mediane_eur == null ? "—" : eur(c.mediane_eur, 2)}</td>
+    <td class="r num" data-v="${c.plancher_eur ?? -1}">${c.plancher_eur == null ? "—" : eur(c.plancher_eur, 2)}</td>
+    <td class="r num" data-v="${c.prudente_eur}"><b>${eur(c.prudente_eur, 2)}</b></td>
+    <td class="r num${vieille(c) ? " warn" : " muted"}" data-v="${c.derniere_vente || ""}">${c.derniere_vente ? dShort(c.derniere_vente) : "aucune"}</td></tr>`).join("");
+  return `${head(crumbs, "Loisir – Sorare", { sub: `${eur(V.total_prudent_eur)} au ${dShort(V.date)} · club ${esc(V.club)} · ${V.nb_cartes} cartes · hors total du patrimoine` })}
+    ${t}
+    <div class="grid g-4">
+      ${kpi("Valeur prudente", eur(V.total_prudent_eur), `${V.total_prudent_eth.toLocaleString("fr-FR")} ETH · médiane ${eur(V.total_median_eur)}${prev ? `<span>${signed(V.total_prudent_eur - prev.total_prudent_eur)} depuis le ${dShort(prev.date)}</span>` : ""}`)}
+      ${kpi("Mise", eur(V.mise_eur), `${V.mise_eth.toLocaleString("fr-FR")} ETH déposés en 2024-2025`)}
+      ${kpi("Effet ETH", signed(V.effet_eth_eur), `ETH à ${eur(V.eth_eur)} aujourd'hui`, V.effet_eth_eur >= 0 ? "k-ok" : "k-bad")}
+      ${kpi("Effet cartes", signed(V.effet_cartes_eur), "baisse de prix des cartes", V.effet_cartes_eur >= 0 ? "k-ok" : "k-bad")}
+    </div>
+    ${panel("Cartes", `<div class="scroll-x"><table class="grid-t sortable" data-tid="sorare">
+      <thead><tr><th>Joueur</th><th class="r" data-dir="desc">Saison</th><th class="r" data-dir="desc">L15</th><th class="r" data-dir="desc">Médiane</th><th class="r" data-dir="desc">Plancher</th><th class="r" data-dir="desc">Prudente</th><th class="r" data-dir="desc">Dernière vente</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`)}
+    <p class="note">Valeur prudente = min(médiane des 5 dernières ventes même joueur et même saison, offre la moins chère du joueur) : ce que l'on toucherait en vendant vite. Dernière vente en orange : plus de 90 jours, carte difficile à revendre.
+      Sources : API publique Sorare et CoinGecko, via <code>sorare_valo.py</code>. Investissement loisir, exclu du total financier.</p>`;
 }
 
 // ---------------------------------------------------------------- routeur
