@@ -86,13 +86,15 @@ export function buildModel(files) {
   }));
   M.patriLast = M.patri.at(-1) || null;
   M.envelopes = (soldes) => {
-    const g = { livrets: 0, av: 0, pea: 0, cc: 0 };
+    const g = { livrets: 0, av: 0, pea: 0, salariale: 0, cc: 0 };
     for (const [k, v] of Object.entries(soldes)) g[comptes[k]?.groupe || "cc"] += v;
     return g;
   };
   const cours = files.get("patrimoine/cours.json");
   M.peaLive = live(files.get("patrimoine/positions_pea.json"), cours);
   M.avLive = live(files.get("patrimoine/positions_av.json"), cours);
+  // Épargne salariale : FCPE non cotés, on garde le dernier relevé Natixis tel quel.
+  M.esPos = files.get("patrimoine/positions_es.json")?.instantanes?.at(-1) || null;
   // Patrimoine estimé au jour : dernier relevé mensuel, PEA et AV revalorisés aux derniers cours.
   const lv = [["pea", M.peaLive], ["av_bnp", M.avLive]].filter(([, x]) => x);
   M.patriEstime = lv.length && M.patriLast
@@ -135,6 +137,7 @@ export const ENVELOPES = [
   { key: "livrets", nom: "Livrets", color: "#3b7bff" },
   { key: "av", nom: "Assurance-vie", color: "#8b5cf6" },
   { key: "pea", nom: "PEA", color: "#ffb35c" },
+  { key: "salariale", nom: "Épargne salariale", color: "#2bb8a6" },
   { key: "cc", nom: "Comptes courants", color: "#5b6270" },
 ];
 

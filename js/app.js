@@ -179,8 +179,10 @@ function actionCard(a) {
 function viewPatrimoine(sub) {
   const M = S.M;
   const t = tabs([["", "Synthèse", "#/patrimoine"], ["livrets", "Livrets", "#/patrimoine/livrets"],
-    ["av", "Assurance-vie", "#/patrimoine/av"], ["pea", "PEA", "#/patrimoine/pea"]], sub || "");
+    ["av", "Assurance-vie", "#/patrimoine/av"], ["pea", "PEA", "#/patrimoine/pea"],
+    ["salariale", "Épargne salariale", "#/patrimoine/salariale"]], sub || "");
   if (sub === "livrets") return viewLivrets(t);
+  if (sub === "salariale") return viewSalariale(t);
   if (sub === "av" || sub === "pea") return viewPositions(sub, t);
 
   const P = M.patri;
@@ -222,7 +224,7 @@ function viewPatrimoine(sub) {
 
   return `${head([["Patrimoine"]], "Patrimoine", { sub: `${eur(L.total)} au ${mLong(L.mois)}` })}
     ${t}
-    <div class="grid g-4">${tiles}</div>
+    <div class="grid g-5">${tiles}</div>
     ${panel("Évolution par enveloppe", `${cols}<div class="legend">${ENVELOPES.map((e) => `<span><i style="background:${e.color}"></i>${e.nom}</span>`).join("")}<span class="muted">n.r. = mois non renseigné</span></div>`)}
     ${panel("Soldes de fin de mois", table)}`;
 }
@@ -258,6 +260,42 @@ function viewLivrets(t) {
       <tbody>${rows}</tbody></table></div>
       <p class="note">Livret A au-delà du plafond : ce sont les intérêts capitalisés, ils restent rémunérés. Seuls les nouveaux versements sont bloqués.</p>`)}
     ${actionsFor("Livrets") + actionsFor("Projet locatif")}`;
+}
+
+function viewSalariale(t) {
+  const M = S.M;
+  const L = M.patriLast;
+  const S0 = M.esPos;
+  const plans = Object.entries(M.comptes).filter(([, c]) => c.groupe === "salariale");
+  const tot = sum(plans, ([k]) => L.soldes[k] || 0);
+  const lignes = S0 ? plans.flatMap(([k, c]) => (S0[k] || []).map((l) => ({ ...l, plan: c.nom }))) : [];
+  const totRel = sum(lignes, (l) => l.montant);
+  const parType = {};
+  for (const l of lignes) parType[l.type] = (parType[l.type] || 0) + l.montant;
+  const TC = { Actions: "#3b7bff", "Diversifié": "#8b5cf6", "Monétaire": "#5b6270", Solidaire: "#3ddc97", "Gestion pilotée": "#2bb8a6" };
+  const rows = [...lignes].sort((a, b) => b.montant - a.montant).map((l) => `<tr>
+    <td data-v="${esc(l.nom)}"><b>${esc(l.nom)}</b><div class="xs muted">${esc(l.plan)} · ${esc(l.type)}</div></td>
+    <td class="r num" data-v="${l.quantite}">${l.quantite.toLocaleString("fr-FR", { maximumFractionDigits: 4 })}</td>
+    <td class="r num" data-v="${l.vl}">${eur(l.vl, 2)}</td>
+    <td class="r num" data-v="${l.montant}"><b>${eur(l.montant)}</b></td>
+    <td class="r num" data-v="${l.montant / totRel}">${pct(l.montant / totRel)}</td></tr>`).join("");
+  return `${head([["Patrimoine", "#/patrimoine"], ["Épargne salariale"]], "Épargne salariale", { sub: `${eur(tot)} · ${pct(tot / L.total)} du patrimoine · Natixis Interépargne, bloquée` })}
+    ${t}
+    <div class="grid g-4">
+      ${kpi("Total", eur(tot), S0 ? `relevé Natixis du ${dShort(S0.date)} ${S0.date.slice(0, 4)}` : "aucun relevé")}
+      ${plans.map(([k, c]) => kpi(c.nom, eur(L.soldes[k] || 0), `bloqué : ${esc(c.blocage || "")}`)).join("")}
+      ${kpi("Part monétaire", pct((parType["Monétaire"] || 0) / (totRel || 1)), "quasi sans rendement, à arbitrer ?")}
+    </div>
+    <div class="grid g-21">
+      ${panel(S0 ? `Fonds au ${dShort(S0.date)}` : "Fonds", S0 ? `<div class="scroll-x"><table class="grid-t sortable" data-tid="es">
+        <thead><tr><th>Fonds</th><th class="r" data-dir="desc">Parts</th><th class="r" data-dir="desc">Valeur part</th><th class="r" data-dir="desc">Montant</th><th class="r" data-dir="desc">Poids</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>` : `<p class="muted">Déposer un relevé Natixis pour voir le détail.</p>`)}
+      ${panel("Par type de fonds", `${split(Object.entries(parType).map(([k, v]) => ({ v, color: TC[k] || "#5b6270", tip: `${k}\n${eur(v)}` })))}
+        <div class="tlist">${Object.entries(parType).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="trow"><span class="tname"><i class="sw" style="background:${TC[k] || "#5b6270"}"></i>${esc(k)}</span><span class="num">${pct(v / totRel)}</span><span class="num muted">${eur(v)}</span></div>`).join("")}</div>`)}
+    </div>
+    <p class="note">FCPE non cotés : montants du dernier relevé, sans revalorisation au jour. Le solde mensuel reprend ce relevé jusqu'au suivant (à faire après chaque versement ou abondement, et au moins tous les 6 mois).
+      Non disponible : exclu de l'épargne de précaution et de l'apport locatif. Le PEE se débloque par anticipation pour l'achat de la résidence principale, pas pour un investissement locatif.</p>
+    ${actionsFor("Épargne salariale")}`;
 }
 
 function viewLive(kind, t) {
