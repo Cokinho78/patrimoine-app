@@ -193,6 +193,46 @@ export function simuler(I, h) {
 
 // ------------------------------------------------------------ verdict & note
 
+// ------------------------------------------------------------ accès gare
+
+const rad = (d) => (d * Math.PI) / 180;
+export function distM(a, b) {
+  const x = rad(b.lon - a.lon) * Math.cos(rad((a.lat + b.lat) / 2));
+  const y = rad(b.lat - a.lat);
+  return Math.sqrt(x * x + y * y) * 6371000;
+}
+const DETOUR = 1.3; // les rues ne vont pas en ligne droite
+const PAS = 80; // m/min, soit 4,8 km/h
+const GARE_TXT = /(\d{1,2})\s*(?:min(?:utes?)?|mn)\s*(?:à pied\s*)?(?:de la |du |de |des |à la |d'une )?(?:gare|rer)|(?:gare|rer)[^.\n]{0,40}?(?:à|en)\s*(\d{1,2})\s*(?:min(?:utes?)?|mn)/i;
+
+// Gare la plus proche. Ordre de confiance : vérifiée (suivi) > position Bien'ici > texte de l'annonce.
+export function accesGare(I, a) {
+  const s = I.suivi[a.id]?.hypotheses?.gare_min;
+  const gares = I.marche.gares || [];
+  const proches = a.position && gares.length
+    ? gares.map((g) => ({ ...g, d: distM(a.position, g) })).sort((p, q) => p.d - q.d).slice(0, 2)
+    : [];
+  if (s) return { min: s.v, nom: s.nom || proches[0]?.nom || "", src: "suivi", note: s.src, proches, pos: a.position };
+  if (proches.length) {
+    const g = proches[0];
+    const prec = a.position.precision_m || 0;
+    return {
+      min: (g.d * DETOUR) / PAS, nom: g.nom, lignes: g.lignes, d: g.d, src: "calcul", proches, pos: a.position,
+      minBas: (Math.max(0, g.d - prec) * DETOUR) / PAS, minHaut: ((g.d + prec) * DETOUR) / PAS,
+      note: `${Math.round(g.d)} m à vol d'oiseau × ${DETOUR} à 4,8 km/h · position du bien floutée à ± ${prec} m`,
+    };
+  }
+  if (a.gare_annonce?.min) return { min: a.gare_annonce.min, nom: a.gare_annonce.nom || "", src: "annonce", note: "Selon l'annonce", proches };
+  const m = `${a.titre} ${a.description}`.match(GARE_TXT);
+  if (m) {
+    const ctx = m[0].toLowerCase();
+    if (!/bus|vélo|velo|voiture|trottinette/.test(ctx)) {
+      return { min: Number(m[1] || m[2]), nom: "", src: "annonce", note: `Selon l'annonce : « ${m[0].trim()} »`, proches };
+    }
+  }
+  return null;
+}
+
 const clamp = (x, a = 1, b = 20) => Math.max(a, Math.min(b, Math.round(x)));
 const lerp = (x, x0, x1) => 1 + ((x - x0) / (x1 - x0)) * 19;
 
@@ -209,6 +249,10 @@ export function analyse(I, a, over = {}) {
   const dpe = /^[A-G]$/.test(a.dpe || "") ? a.dpe : null;
   const proc = typeof a.procedure_copro === "string" ? !/pas de proc/i.test(a.procedure_copro) : a.procedure_copro === true;
   const coproM2 = a.charges_copro_an && a.surface ? a.charges_copro_an / a.surface : null;
+  const gare = accesGare(I, a);
+  const gIdeal = crit.gare_ideal_min ?? 8;
+  const gMax = crit.gare_max_min ?? 15;
+  const loin = gare && gare.min > gMax;
 
   const exclus = [];
   if (dpe && crit.dpe_exclus.includes(dpe)) exclus.push(`DPE ${dpe} : ${dpe === "G" ? "interdit à la location depuis 2025" : "interdit à la location en 2028"}`);
@@ -222,11 +266,14 @@ export function analyse(I, a, over = {}) {
   if (dpe === "E") alertes.push("DPE E : location interdite à partir de 2034 ; prévoir des travaux");
   if (m2 && p75 && m2 > p75) alertes.push(`Prix au m² au-dessus de 75 % des ventes récentes de la commune (${Math.round(p75).toLocaleString("fr-FR")} €/m²)`);
   if (!a.charges_copro_an) alertes.push("Charges de copropriété inconnues");
+  if (!gare) alertes.push("Distance à la gare inconnue : demander l'adresse avant la visite");
+  else if (loin) alertes.push(`Gare à ~${Math.round(gare.min)} min à pied${gare.nom ? ` (${gare.nom})` : ""} : au-delà de ${gMax} min, moins demandé`);
   if (a.etage === 0) alertes.push("Rez-de-chaussée : moins demandé, vérifier sécurité et luminosité");
   if (/(^|[^a-zà-ÿ])lou[ée]e?([^a-zà-ÿ]|$)|locataire (déjà )?en place|vendu lou|bail en cours/.test(txt)) alertes.push("Vendu loué : demander le bail (nu ou meublé), le loyer réel et la date de fin. En bail nu, pas de passage en meublé avant la fin du bail");
 
   const atouts = [];
   if (m2 && med && m2 < med) atouts.push(`Prix au m² sous la médiane de la commune (−${Math.round((1 - m2 / med) * 100)} %)`);
+  if (gare && gare.min <= gIdeal) atouts.push(`Gare à ~${Math.max(1, Math.round(gare.min))} min à pied${gare.nom ? ` (${gare.nom})` : ""}`);
   if (a.exterieur) atouts.push("Extérieur (terrasse / balcon)");
   if (a.ascenseur) atouts.push("Ascenseur");
   if (dpe && "ABC".includes(dpe)) atouts.push(`Bon DPE (${dpe})`);
@@ -234,27 +281,35 @@ export function analyse(I, a, over = {}) {
 
   const attrs = {
     Rendement: clamp(lerp(sim.rdtBrut, 0.03, 0.06)),
+    // ≤ 5 min → 20 · 10 min → 14 · 15 min → 8 · ≥ 20 min → 1
+    Gare: gare ? clamp(lerp(-gare.min, -20.8, -5)) : null,
     Prix: m2 && med ? clamp(lerp(-(m2 / med), -1.3, -0.75)) : null,
     Énergie: dpe ? DPE_NOTE[dpe] : null,
     Copro: proc ? 1 : coproM2 == null ? null : clamp(lerp(-coproM2, -60, -15)),
     Secteur: { coeur: 18, voisine: 15, secondaire: 11 }[I.rang(a.insee)] || 6,
     Trésorerie: clamp(lerp(sim.cfApres, -450, 50)),
   };
-  const W = { Rendement: 3, Prix: 2, Énergie: 2, Copro: 1, Secteur: 2, Trésorerie: 1 };
+  const W = { Rendement: 3, Gare: 3, Prix: 2, Énergie: 2, Copro: 1, Secteur: 1, Trésorerie: 1 };
   let num = 0;
   let den = 0;
-  for (const [k, val] of Object.entries(attrs)) if (val != null) { num += val * W[k]; den += W[k]; }
+  // Info manquante sur un critère clé = 8/20 par prudence (une annonce muette ne doit pas passer devant).
+  const PRUDENCE = { Gare: 8, Énergie: 8 };
+  for (const [k, val] of Object.entries(attrs)) {
+    const x = val ?? PRUDENCE[k];
+    if (x != null) { num += x * W[k]; den += W[k]; }
+  }
   const note = exclus.length ? Math.min(5, num / den) : num / den;
 
   const C = I.cfg.cible;
   let verdict;
   if (exclus.length) verdict = { cls: "v-out", lbl: "À écarter", txt: exclus[0] };
   else if (!sim.budgetOk) verdict = { cls: "v-nego", lbl: "Visiter et négocier", txt: `Hors budget au prix affiché : viser ${eur0(Math.min(sim.prixMaxBudget, sim.prixCible))} maximum` };
+  else if (sim.rdtBrut >= C.rendement_brut && loin) verdict = { cls: "v-nego", lbl: "Visiter et négocier", txt: `Bon rendement (${pct1(sim.rdtBrut)}) mais gare à ~${Math.round(gare.min)} min : négocier en conséquence` };
   else if (sim.rdtBrut >= C.rendement_brut) verdict = { cls: "v-go", lbl: "À visiter", txt: `Rendement brut ${pct1(sim.rdtBrut)} ≥ cible ${pct1(C.rendement_brut)}` };
   else if (sim.rdtBrut >= C.rendement_brut_min) verdict = { cls: "v-nego", lbl: "Visiter et négocier", txt: `Viser ${eur0(sim.prixCible)} pour ${pct1(C.rendement_brut)} brut` };
   else verdict = { cls: "v-low", lbl: "Trop cher", txt: `Il faudrait ${eur0(sim.prixCibleMin)} pour atteindre ${pct1(C.rendement_brut_min)} brut` };
 
-  return { h, sim, m2, med, p75, exclus, alertes, atouts, attrs, note, verdict };
+  return { h, sim, m2, med, p75, exclus, alertes, atouts, attrs, note, verdict, gare };
 }
 
 const pct1 = (x) => `${(x * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %`;

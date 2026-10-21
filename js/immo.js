@@ -119,16 +119,24 @@ function viewCockpit(I) {
 
 // ------------------------------------------------------------ annonces
 
-const ATTRS = [["Rendement", "Rdt"], ["Prix", "Prix"], ["Énergie", "Éner."], ["Copro", "Copro"], ["Secteur", "Sect."], ["Trésorerie", "Tréso"]];
+const ATTRS = [["Rendement", "Rdt"], ["Gare", "Gare"], ["Prix", "Prix"], ["Énergie", "Éner."], ["Copro", "Copro"], ["Secteur", "Sect."], ["Trésorerie", "Tréso"]];
 
 // Clic sur un en-tête = tri ; menus sous Ville / DPE / Verdict = filtres. `tid` garde l'état par tableau.
 function tableAnnonces(rows, tid = "ann") {
   if (!rows) return `<p class="empty">Aucune annonce.</p>`;
   return `<div class="scroll-x"><table class="grid-t ann sortable" data-tid="${tid}">
-    <thead><tr><th data-dir="desc">Note</th><th data-filter>Bien</th><th class="r" data-dir="desc">Surface</th><th class="r">Prix FAI</th><th class="r">€/m² vs médiane</th><th data-filter>DPE</th>
+    <thead><tr><th data-dir="desc">Note</th><th data-filter>Bien</th><th class="r" data-dir="desc">Surface</th><th class="r">Prix FAI</th><th class="r">€/m² vs médiane</th><th data-filter>DPE</th><th class="r" title="Temps à pied estimé jusqu'à la gare RER / Transilien la plus proche">Gare à pied</th>
       ${ATTRS.map(([k, l]) => `<th class="r att" data-dir="desc" title="Note ${k} /20">${l}</th>`).join("")}
       <th class="r" data-dir="desc">Loyer HC est.</th><th class="r" data-dir="desc">Brut</th><th class="r" data-dir="desc">Cash-flow</th><th data-filter>Verdict</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
+}
+
+const minFmt = (m) => `${Math.max(1, Math.round(m))} min`;
+const gareCourt = (n) => (n || "").replace("Houilles-Carrières-sur-Seine", "Houilles-Carr.").replace("Le Vésinet-", "Vésinet-").replace("Châtou-Croissy", "Chatou-Croissy");
+function gareCell(g) {
+  if (!g) return `<span class="muted">?</span>`;
+  const cls = g.min <= 8 ? "up" : g.min > 15 ? "down" : "";
+  return `<b class="${cls}">${g.src === "calcul" ? "~" : ""}${minFmt(g.min)}</b>${g.nom ? `<small class="muted gname">${esc(gareCourt(g.nom))}</small>` : g.src === "annonce" ? `<small class="muted gname">selon l'annonce</small>` : ""}`;
 }
 
 function rowAnnonce(I, a, x) {
@@ -145,6 +153,7 @@ function rowAnnonce(I, a, x) {
     <td class="r num" data-v="${a.prix}"><b>${eur(a.prix)}</b></td>
     <td class="r num" data-v="${x.m2 ?? ""}">${m2fmt(x.m2)} ${ecart == null ? "" : `<small class="${ecart > 0.1 ? "down" : ecart < 0 ? "up" : "muted"}">${ecart > 0 ? "+" : "−"}${Math.round(Math.abs(ecart) * 100)} %</small>`}</td>
     <td data-v="${/^[A-G]$/.test(a.dpe || "") ? a.dpe : "Z"}" data-f="${/^[A-G]$/.test(a.dpe || "") ? a.dpe : "?"}">${dpeChip(a.dpe)}</td>
+    <td class="r num" data-v="${x.gare ? x.gare.min : 999}">${gareCell(x.gare)}</td>
     ${ATTRS.map(([k]) => `<td class="r num att" data-v="${x.attrs[k] ?? ""}"><b class="${noteCls(x.attrs[k])}">${x.attrs[k] == null ? "–" : Math.round(x.attrs[k])}</b></td>`).join("")}
     <td class="r num" data-v="${x.h.loyer_hc.v || ""}">${x.h.loyer_hc.v ? eur(x.h.loyer_hc.v) : "—"}</td>
     <td class="r num" data-v="${x.sim.rdtBrut}"><b>${pct1(x.sim.rdtBrut)}</b></td>
@@ -165,7 +174,7 @@ function viewAnnonces(I) {
       <div class="seg">${[["", "Toutes"], ...communes.map((c) => [c.insee, c.nom.replace("-sur-Seine", "")])].map(([k, l]) => `<button type="button" data-icommune="${k}" aria-pressed="${ST.commune === k}">${esc(l)}</button>`).join("")}</div>
       <label class="tgl"><input type="checkbox" id="i-exclus" ${ST.exclus ? "checked" : ""}> Afficher les écartées</label>
     </div>
-    ${panel("Classement", tableAnnonces(list.map(({ a, x }) => rowAnnonce(I, a, x)).join("")), { right: `<span class="muted xs">Clic sur une colonne = tri · Note /20 = rendement ×3, prix vs marché ×2, DPE ×2, secteur ×2, copro, trésorerie</span>` })}
+    ${panel("Classement", tableAnnonces(list.map(({ a, x }) => rowAnnonce(I, a, x)).join("")), { right: `<span class="muted xs">Clic sur une colonne = tri · Note /20 = rendement ×3, gare ×3, prix vs marché ×2, DPE ×2, secteur, copro, trésorerie</span>` })}
     ${retirees.length ? panel(`Retirées du marché · ${retirees.length}`, `<div class="tlist">${retirees.map((a) => `<a class="trow" href="${href(a.id)}"><span class="tname">${esc(a.ville)} · ${a.surface} m²<small>${esc(a.titre).slice(0, 60)}</small></span><span class="num">${eur(a.prix)}</span><span class="num muted xs">vue du ${dShort(a.premiere_vue)} au ${dShort(a.retrait || a.derniere_vue)}</span></a>`).join("")}</div>
       <p class="note">Une annonce retirée vite = un prix juste. Ça calibre tes offres.</p>`) : ""}`;
 }
@@ -223,6 +232,27 @@ function simOut(I, a, x) {
       <tbody>${yrs.map((y) => `<tr><td>${y.an}</td><td class="r num">${eur(y.loyer)}</td><td class="r num">${eur(y.charges)}</td><td class="r num">${eur(y.interets)}</td><td class="r num muted">${eur(y.amort)}</td><td class="r num">${eur(y.imposable)}</td><td class="r num">${eur(y.impot)}</td><td class="r num ${y.cfApres < 0 ? "down" : "up"}">${eur(y.cfApres)}</td><td class="r num muted">${eur(y.crd)}</td></tr>`).join("")}</tbody>
     </table></div>
     <p class="note">LMNP au réel : l'amortissement efface l'impôt tant qu'il reste du stock, d'où un impôt nul les premières années. Comparaison micro-BIC (abattement 50 %) : environ ${eur(S.microImpot)} d'impôt dès l'an 1. ${esc(I.cfg.fiscalite.plus_value_note)}</p>`;
+}
+
+function garePanel(I, g) {
+  const crit = I.cfg.criteres;
+  if (!g) {
+    return panel("Accès gare", `<p class="soft">Distance inconnue : l'annonce ne donne ni position ni temps d'accès. Demande l'adresse exacte à l'agent ou au vendeur, puis donne-la à /immo.</p>`, { cls: "gare-p" });
+  }
+  const cls = g.min <= (crit.gare_ideal_min ?? 8) ? "g-ok" : g.min > (crit.gare_max_min ?? 15) ? "g-bad" : "g-mid";
+  const maps = (p, d) => `https://www.google.com/maps/dir/?api=1&origin=${p.lat},${p.lon}&destination=${d.lat},${d.lon}&travelmode=walking`;
+  const autres = (g.proches || []).slice(1).map((p) => `${esc(p.nom)} (${p.lignes.join(", ")}) · ~${minFmt((p.d * 1.3) / 80)}`).join("");
+  return panel("Accès gare", `<div class="gare">
+      <div class="gare-min ${cls}"><b>${g.src === "calcul" ? "~" : ""}${Math.max(1, Math.round(g.min))}</b><small>min à pied</small></div>
+      <div class="gare-d">
+        <div><b>${esc(g.nom || "Gare citée par l'annonce")}</b>${g.lignes ? ` <span class="muted">· ${g.lignes.join(" · ")}</span>` : ""} ${srcBadge(g.src)}</div>
+        ${g.minBas != null ? `<div class="soft">Fourchette ${minFmt(g.minBas)} – ${minFmt(g.minHaut)} selon l'emplacement exact</div>` : ""}
+        <div class="xs muted">${esc(g.note || "")}</div>
+        ${autres ? `<div class="xs muted">Autre gare : ${autres}</div>` : ""}
+        ${g.pos && g.proches?.[0] ? ext(maps(g.pos, g.proches[0]), "Vérifier l'itinéraire à pied") : ""}
+      </div>
+    </div>
+    <p class="note">Repères : ≤ ${crit.gare_ideal_min ?? 8} min = idéal pour un studio locatif · au-delà de ${crit.gare_max_min ?? 15} min = moins demandé, à compenser par le prix. Coordonnées des gares : Île-de-France Mobilités. Une fois l'adresse exacte connue, /immo enregistre le temps réel (source « Vérifié »).</p>`, { cls: "gare-p" });
 }
 
 function loyerPanel(I, a, x) {
@@ -294,13 +324,14 @@ function viewBien(I, id) {
     ${a.photos?.length ? `<div class="photos">${a.photos.map((p) => `<img src="${esc(p)}" alt="" loading="lazy" referrerpolicy="no-referrer">`).join("")}</div>` : ""}
     <div class="grid g-12">
       ${panel("Profil du bien", `<div class="profil"><div class="big-note ${noteCls(base.note)}"><b>${base.note.toFixed(1).replace(".", ",")}</b><small>/20</small></div>${attrBars(base.attrs)}</div>
-        <p class="note">Note aux hypothèses par défaut (prix affiché). Un attribut « – » = information manquante, non noté.</p>`)}
+        <p class="note">Note aux hypothèses par défaut (prix affiché). Un attribut « – » = information manquante : comptée 8/20 par prudence pour la gare et le DPE, ignorée sinon.</p>`)}
       ${panel("Verdict", `<div class="vbox ${base.verdict.cls}"><b>${base.verdict.lbl}</b><span>${esc(base.verdict.txt)}</span></div>
         ${base.exclus.length ? `<ul class="pts p-out">${base.exclus.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
         ${base.alertes.length ? `<ul class="pts p-warn">${base.alertes.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
         ${base.atouts.length ? `<ul class="pts p-ok">${base.atouts.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
         ${s?.verdict ? `<div class="callout"><div class="lbl">Avis après analyse · ${esc(s.maj || "")}</div><p>${esc(s.verdict)}</p></div>` : ""}`)}
     </div>
+    ${garePanel(I, base.gare)}
     ${panel("Simulateur", `${simControls(a, x)}<div id="simu-out">${simOut(I, a, x)}</div>`, { right: `<span class="muted xs">Bouge les curseurs : tout se recalcule</span>`, cls: "simu" })}
     <div class="grid g-11">
       ${loyerPanel(I, a, x)}

@@ -518,3 +518,16 @@ th.sort-h[aria-sort="ascending"], th.sort-h[aria-sort="descending"] { color: var
 .tx-count:empty { display: none; }
 .ann th.att, .ann td.att { padding-left: 5px; padding-right: 5px; }
 .ann td.att b { display: inline-block; min-width: 26px; text-align: center; border-radius: 5px; padding: 1px 4px; }
+
+/* accès gare */
+.gare { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 18px; align-items: center; }
+.gare-min { border-radius: 14px; height: 96px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface2); }
+.gare-min b { font: 700 46px/0.9 "Barlow Condensed", sans-serif; }
+.gare-min small { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85; }
+.gare-min.g-ok { background: var(--accent); color: #fff; }
+.gare-min.g-mid { background: rgba(255, 181, 71, 0.18); color: var(--warn); }
+.gare-min.g-bad { background: rgba(255, 107, 107, 0.16); color: var(--down); }
+.gare-d { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.gare-d b { font-size: 16px; }
+.gname { display: block; font-size: 11px; white-space: nowrap; }
+@media (max-width: 560px) { .gare { grid-template-columns: 1fr; } .gare-min { width: 120px; } }
