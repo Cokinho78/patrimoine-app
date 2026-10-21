@@ -98,6 +98,7 @@ export function buildModel(files) {
   // Loisir – Sorare : valorisé par sorare_valo.py, affiché hors du total financier.
   M.sorare = files.get("sorare/valo.json") || null;
   M.sorareHisto = files.get("sorare/historique.json") || [];
+  M.sorareDecision = files.get("sorare/decision.json") || null;
   // Patrimoine estimé au jour : dernier relevé mensuel, PEA et AV revalorisés aux derniers cours.
   const lv = [["pea", M.peaLive], ["av_bnp", M.avLive]].filter(([, x]) => x);
   M.patriEstime = lv.length && M.patriLast

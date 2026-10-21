@@ -722,11 +722,29 @@ function viewSorare(t) {
       ${kpi("Effet ETH", signed(V.effet_eth_eur), `ETH à ${eur(V.eth_eur)} aujourd'hui`, V.effet_eth_eur >= 0 ? "k-ok" : "k-bad")}
       ${kpi("Effet cartes", signed(V.effet_cartes_eur), "baisse de prix des cartes", V.effet_cartes_eur >= 0 ? "k-ok" : "k-bad")}
     </div>
+    ${sorareDecision(S.M.sorareDecision)}
     ${panel("Cartes", `<div class="scroll-x"><table class="grid-t sortable" data-tid="sorare">
       <thead><tr><th>Joueur</th><th class="r" data-dir="desc">Saison</th><th class="r" data-dir="desc">L15</th><th class="r" data-dir="desc">Médiane</th><th class="r" data-dir="desc">Plancher</th><th class="r" data-dir="desc">Prudente</th><th class="r" data-dir="desc">Dernière vente</th></tr></thead>
       <tbody>${rows}</tbody></table></div>`)}
     <p class="note">Valeur prudente = min(médiane des 5 dernières ventes même joueur et même saison, offre la moins chère du joueur) : ce que l'on toucherait en vendant vite. Dernière vente en orange : plus de 90 jours, carte difficile à revendre.
       Sources : API publique Sorare et CoinGecko, via <code>sorare_valo.py</code>. Investissement loisir, exclu du total financier.</p>`;
+}
+
+// Aide à la décision écrite par /sorare decision (sorare/decision.json) : la décision reste la sienne.
+function sorareDecision(D) {
+  if (!D) return "";
+  const li = (xs) => `<ul class="note">${xs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+  const sc = D.scenarios.map((x) => `<div class="kpi"><div class="lbl">${esc(x.titre)}</div>
+    <p><b>Argent :</b> ${esc(x.argent)}</p><p><b>Gains :</b> ${esc(x.gains)}</p>
+    <p><b>Risque :</b> ${esc(x.risque)}</p><p class="muted"><b>Temps :</b> ${esc(x.temps)}</p></div>`).join("");
+  return panel(`Aide à la décision · ${dShort(D.date)} ${D.date.slice(0, 4)}`, `
+    <div class="grid g-11"><div><div class="lbl">Faits</div>${li(D.faits)}</div>
+      <div><div class="lbl">Ce qui peut faire pencher</div>${li(D.criteres.map((c) => `${c.si} → ${c.alors}`))}</div></div>
+    <div class="grid g-tiles">${sc}</div>
+    <div class="callout"><div class="lbl">Interprétation · enveloppe ${eur(D.enveloppe_eur)}</div><p>${esc(D.interpretation)}</p></div>
+    <p class="note"><b>À vérifier :</b> ${D.a_verifier.map(esc).join(" · ")}<br>
+      Sources : ${D.sources.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.titre)}</a>`).join(" · ")}.
+      Aide à la décision chiffrée, pas un conseil en investissement : c'est toi qui tranches.</p>`);
 }
 
 // ---------------------------------------------------------------- routeur
