@@ -217,6 +217,8 @@ a.col:hover { background: rgba(255, 255, 255, 0.04); }
 .line .gap { stroke-width: 2; stroke-dasharray: 4 5; opacity: 0.6; }
 .line .ax { fill: var(--muted); font: 500 11px "Barlow", sans-serif; }
 .line .ax.off { opacity: 0.45; }
+.line .ref { stroke: var(--warn); stroke-width: 1.5; stroke-dasharray: 6 5; }
+.line .ref-t { fill: var(--warn); font: 600 11px "Barlow", sans-serif; text-transform: uppercase; letter-spacing: 0.06em; }
 
 /* ---- mini-histogrammes */
 .spark { position: relative; height: 64px; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line); }
@@ -537,3 +539,16 @@ th.sort-h[aria-sort="ascending"], th.sort-h[aria-sort="descending"] { color: var
 .contacts tr.sub-r td { padding-top: 0; border-top: 0; }
 .contacts tr.sub-r .pts { margin: 6px 0; }
 .contacts td .flag { margin: 0; }
+
+/* Prévisionnel */
+.pv-tg { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.screen-h + .subtabs, .subtabs + .pv-tg { margin-top: 0; }
+.row-r { display: flex; justify-content: flex-end; }
+.pv-t th small, .matrix th small { display: block; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.pv-t tfoot td { font-weight: 700; }
+.pv-t tfoot td a:hover { color: var(--accent); }
+.pv-marge td { font-weight: 600 !important; font-size: 12px; }
+.pv-tot { border-top: 1px solid var(--line); }
+.tag.st-est { background: rgba(255, 181, 71, 0.16); color: var(--warn); }
+.tag.st-def { background: rgba(255, 107, 107, 0.16); color: var(--down); }
+.tag.st-hyp { background: var(--accent-soft); color: #8fb4ff; }

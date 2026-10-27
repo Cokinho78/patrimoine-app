@@ -12,11 +12,14 @@ import { enhanceTables } from "./tables.js";
 import { panel, kpi, delta, head, tabs } from "./ui.js";
 import { viewImmo, bindImmo } from "./immo.js";
 import { buildImmo } from "./immo-model.js";
+import { viewPrev, prevAccueil } from "./prev.js";
 
 const S = {
   cfg: loadConfig(),
   M: null,
   I: null,
+  P: null,
+  pv: { dep: "budget", vers: "actuel", immo: true },
   error: "",
   period: "12",
   tx: { q: "", cat: "", mois: "" },
@@ -36,6 +39,7 @@ async function loadAll() {
     const data = await store.readMany(files);
     S.M = buildModel(data);
     S.I = buildImmo(data);
+    S.P = data.get("config/previsionnel.json") || null;
     S.error = "";
     setSync(store.offline ? "Hors ligne : dernières données" : `À jour · ${mYear(S.M.months.at(-1))}`, store.offline ? "" : "ok");
   } catch (e) {
@@ -136,6 +140,7 @@ function viewAccueil() {
     ${kpi("Dépenses courantes · 3 mois", `${eur(dep3)}<small>/mois</small>`, `${meter(dep3, M.budgetCourant, dep3 > M.budgetCourant ? "#ff6b6b" : "#3b7bff")}Budget ${eur(M.budgetCourant)} · ${dep3 > M.budgetCourant ? `<span class="down">+${eur(dep3 - M.budgetCourant)}</span>` : `<span class="up">−${eur(M.budgetCourant - dep3)}</span>`}`)}
     ${immoKpi() || kpi("Actions ouvertes", `${actions.filter((a) => a.niveau !== "info").length}`, `<a href="#/actions">Voir le plan →</a>`)}
   </div>
+  ${prevAccueil(prevCtx())}
   <div class="grid g-21">
     ${panel("Évolution du patrimoine", patriLine, { right: `<a href="#/patrimoine">Détail par compte →</a>` })}
     ${panel("Répartition", `${split(ENVELOPES.map((e) => ({ v: env[e.key], color: e.color, tip: `${e.nom}\n${eur(env[e.key])}` })))}<div class="tlist">${envRows}</div>`)}
@@ -801,6 +806,7 @@ function render() {
   const views = {
     accueil: viewAccueil, patrimoine: () => viewPatrimoine(a), depenses: dep, actions: viewActions,
     immo: () => viewImmo(S.I, a, b),
+    previsionnel: () => viewPrev(prevCtx(), a, b),
   };
   $view.innerHTML = (views[route] || viewAccueil)();
   drawLines($view);
@@ -808,6 +814,8 @@ function render() {
   enhanceTables($view);
   if (route === "immo") bindImmo($view, S.I);
 }
+
+const prevCtx = () => ({ M: S.M, I: S.I, P: S.P, st: S.pv });
 
 function bindSettings() {
   const f = document.getElementById("settings");
@@ -824,6 +832,13 @@ function bindSettings() {
 }
 
 $view.addEventListener("click", (e) => {
+  const pv = e.target.closest("[data-pv]");
+  if (pv) {
+    const [k, v] = pv.dataset.pv.split(":");
+    S.pv = { ...S.pv, [k]: k === "immo" ? v === "1" : v };
+    render();
+    return;
+  }
   const p = e.target.closest("[data-period]");
   if (p) { S.period = p.dataset.period; render(); return; }
   const mk = e.target.closest("[data-marchand]");

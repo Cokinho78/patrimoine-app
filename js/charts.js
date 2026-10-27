@@ -47,18 +47,19 @@ export function columns(cols, { height = 240, max, ref } = {}) {
 
 // Courbe d'aire, dessinée à la largeur réelle du conteneur (voir drawLines).
 // points: [{ label, v|null, tip }]
-export function line(points, { height = 200, color = "var(--accent)", lo, hi } = {}) {
-  const data = encodeURIComponent(JSON.stringify({ points, color, lo, hi }));
+// ref: { v, label } = ligne horizontale pointillée (seuil, plancher).
+export function line(points, { height = 200, color = "var(--accent)", lo, hi, ref } = {}) {
+  const data = encodeURIComponent(JSON.stringify({ points, color, lo, hi, ref }));
   return `<div class="line" style="height:${height}px" data-line="${data}"></div>`;
 }
 
 export function drawLines(root) {
   root.querySelectorAll("[data-line]").forEach((el) => {
-    const { points, color, lo, hi } = JSON.parse(decodeURIComponent(el.dataset.line));
+    const { points, color, lo, hi, ref } = JSON.parse(decodeURIComponent(el.dataset.line));
     const W = el.clientWidth, H = el.clientHeight;
     if (!W) return;
     const P = { l: 46, r: 16, t: 18, b: 26 };
-    const vals = points.map((p) => p.v).filter((v) => v != null);
+    const vals = [...points.map((p) => p.v), ref?.v].filter((v) => v != null);
     let vmin = lo ?? Math.min(...vals), vmax = hi ?? Math.max(...vals);
     const pad = (vmax - vmin) * 0.15 || 1000;
     vmin = lo ?? Math.floor((vmin - pad) / 1000) * 1000;
@@ -91,6 +92,8 @@ export function drawLines(root) {
       </linearGradient></defs>
       ${g}
       ${area ? `<path d="${area}" fill="url(#${id})"/>` : ""}
+      ${ref ? `<line x1="${P.l}" x2="${W - P.r}" y1="${yy(ref.v)}" y2="${yy(ref.v)}" class="ref"/>
+        <text x="${W - P.r}" y="${yy(ref.v) - 6}" text-anchor="end" class="ref-t">${esc(ref.label || "")}</text>` : ""}
       ${gaps.replaceAll("<line", `<line stroke="${color}"`)}
       <path d="${solid}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
       ${points.map((p, i) => `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" class="ax${p.v == null ? " off" : ""}">${esc(p.label)}</text>`).join("")}
