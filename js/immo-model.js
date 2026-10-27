@@ -27,6 +27,7 @@ export function buildImmo(files) {
     annoncesMaj: files.get("immo/annonces.json")?.maj,
     suivi: files.get("immo/suivi.json")?.biens || {},
     journal: (files.get("immo/journal.json")?.entrees || []).slice().sort((a, b) => b.date.localeCompare(a.date)),
+    contacts: files.get("immo/contacts.json")?.contacts || [],
   };
   I.commune = (insee) => marche.communes.find((c) => c.insee === insee) || null;
   I.rang = (insee) => cfg.criteres.communes.find((c) => c.insee === insee)?.rang || "hors";

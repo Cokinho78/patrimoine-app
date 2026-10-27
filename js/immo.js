@@ -25,8 +25,20 @@ const verdictTag = (v) => `<span class="verdict ${v.cls}">${v.lbl}</span>`;
 
 function immoTabs(active) {
   return tabs([["", "Cockpit", "#/immo"], ["annonces", "Annonces", "#/immo/annonces"],
-    ["marche", "Marché", "#/immo/marche"], ["veille", "Veille", "#/immo/veille"]], active);
+    ["contacts", "Contacts", "#/immo/contacts"], ["marche", "Marché", "#/immo/marche"], ["veille", "Veille", "#/immo/veille"]], active);
 }
+
+const CONTACT_ST = {
+  a_contacter: ["À contacter", "f-todo"], envoye: ["Envoyé", "f-ok"], en_contact: ["En contact", "f-new"],
+  a_relancer: ["À relancer", "f-down"], en_pause: ["En pause", "f-st"],
+};
+const contactFlag = (s) => `<span class="flag ${CONTACT_ST[s]?.[1] || "f-st"}">${CONTACT_ST[s]?.[0] || esc(s)}</span>`;
+const relanceDue = (c) => c.relance && c.statut !== "en_pause" && daysTo(c.relance) <= 0;
+const relanceCell = (c) => {
+  if (!c.relance || c.statut === "en_pause") return `<span class="muted">—</span>`;
+  const d = daysTo(c.relance);
+  return `<b class="${d < 0 ? "down" : d === 0 ? "warn" : ""}">${dShort(c.relance)}</b><small class="muted">${d < 0 ? ` · ${-d} j de retard` : d === 0 ? " · aujourd'hui" : ` · J-${d}`}</small>`;
+};
 
 export function viewImmo(I, sub, arg) {
   if (!I) {
@@ -34,6 +46,7 @@ export function viewImmo(I, sub, arg) {
   }
   if (sub === "bien") return viewBien(I, decodeURIComponent(arg || ""));
   if (sub === "annonces") return viewAnnonces(I);
+  if (sub === "contacts") return viewContacts(I);
   if (sub === "marche") return viewMarche(I);
   if (sub === "veille") return viewVeille(I);
   return viewCockpit(I);
@@ -63,6 +76,10 @@ function viewCockpit(I) {
   const visites = suivis.filter((s) => ["visite", "offre"].includes(s.statut)).length;
   const point = I.journal.find((j) => j.type === "point");
   const chatou = I.commune("78146");
+  const aRelancer = I.contacts.filter(relanceDue);
+  const prochaines = I.contacts.filter((c) => c.relance && c.statut !== "en_pause" && !relanceDue(c))
+    .sort((p, q) => p.relance.localeCompare(q.relance)).slice(0, 3);
+  const enContact = I.contacts.filter((c) => c.statut === "en_contact").length;
 
   const steps = etapes.map((e, i) => {
     const done = e.taches.filter((t) => t.fait).length;
@@ -110,6 +127,8 @@ function viewCockpit(I) {
       ${panel("Feuille de route", `<div class="steps-l">${steps}</div>`, { right: `<span class="muted xs">Mise à jour par /immo point</span>` })}
       <div class="col-stack-v">
         ${point ? panel(`Cette semaine · ${dShort(point.date)}`, `<p class="soft">${esc(point.texte || "")}</p><ol class="next">${(point.actions || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ol>`) : ""}
+        ${I.contacts.length ? panel(`Contacts · ${I.contacts.length} agences`, `<div class="tlist">${[...aRelancer, ...prochaines].map((c) => `<a class="trow" href="#/immo/contacts"><span class="tname">${esc(c.nom)}<small>${esc(c.historique?.at(-1)?.action || "")}</small></span>${contactFlag(relanceDue(c) ? "a_relancer" : c.statut)}<span class="num">${relanceCell(c)}</span></a>`).join("")}</div>
+          <p class="note">${aRelancer.length ? `<span class="warn">${aRelancer.length} relance${aRelancer.length > 1 ? "s" : ""} à faire</span> · ` : ""}${enContact} en contact suivi</p>`, { right: `<a href="#/immo/contacts">Tous →</a>` }) : ""}
         ${panel("Marché · petites surfaces", `<div class="trow mrow mhead"><span class="lbl">Commune</span><span class="lbl r">Prix DVF</span><span class="lbl r">Loyer nu CC</span><span class="lbl r">Brut théo.</span></div><div class="tlist">${marche}</div>
           <p class="note">Prix médian des ventes réelles ≤ ${I.marche.petite_surface_max} m² (DVF 2023-2025) · loyer T1-T2 nu charges comprises (ANIL 2025). Le brut théorique ne compte ni frais de notaire ni charges.</p>`, { right: `<a href="#/immo/marche">Détail →</a>` })}
       </div>
@@ -177,6 +196,38 @@ function viewAnnonces(I) {
     ${panel("Classement", tableAnnonces(list.map(({ a, x }) => rowAnnonce(I, a, x)).join("")), { right: `<span class="muted xs">Clic sur une colonne = tri · Note /20 = rendement ×3, gare ×3, prix vs marché ×2, DPE ×2, secteur, copro, trésorerie</span>` })}
     ${retirees.length ? panel(`Retirées du marché · ${retirees.length}`, `<div class="tlist">${retirees.map((a) => `<a class="trow" href="${href(a.id)}"><span class="tname">${esc(a.ville)} · ${a.surface} m²<small>${esc(a.titre).slice(0, 60)}</small></span><span class="num">${eur(a.prix)}</span><span class="num muted xs">vue du ${dShort(a.premiere_vue)} au ${dShort(a.retrait || a.derniere_vue)}</span></a>`).join("")}</div>
       <p class="note">Une annonce retirée vite = un prix juste. Ça calibre tes offres.</p>`) : ""}`;
+}
+
+// ------------------------------------------------------------ contacts
+
+function viewContacts(I) {
+  const list = I.contacts.slice().sort((p, q) => (relanceDue(q) - relanceDue(p)) || (p.relance || "9").localeCompare(q.relance || "9"));
+  const n = (s) => I.contacts.filter((c) => c.statut === s).length;
+  const rows = list.map((c) => {
+    const last = c.historique?.at(-1);
+    const coords = [c.email && `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`, c.tel && `<a href="tel:${esc(c.tel.replace(/\s/g, ""))}">${esc(c.tel)}</a>`].filter(Boolean).join("<br>");
+    return `<tr>
+      <td data-v="${esc(c.nom)}"><b>${esc(c.nom)}</b><small class="muted">${esc(c.ville || "")}${c.interlocuteur ? ` · ${esc(c.interlocuteur)}` : ""}</small></td>
+      <td data-v="${esc(c.statut)}" data-f="${esc(CONTACT_ST[relanceDue(c) ? "a_relancer" : c.statut]?.[0] || c.statut)}">${contactFlag(relanceDue(c) ? "a_relancer" : c.statut)}</td>
+      <td data-v="${last?.date || ""}">${last ? `<span class="num">${dShort(last.date)}</span> <span class="soft">${esc(last.action)}</span>` : "—"}</td>
+      <td class="r" data-v="${c.relance || "9"}">${relanceCell(c)}</td>
+      <td class="xs">${esc(c.canal || "")}${coords ? `<br>${coords}` : ""}</td>
+    </tr>
+    ${c.notes || c.historique?.length > 1 ? `<tr class="sub-r"><td colspan="5"><details><summary class="muted xs">Historique et notes</summary>
+      <ul class="pts">${(c.historique || []).map((h) => `<li><span class="num">${dShort(h.date)} ${h.date.slice(2, 4)}</span> · ${esc(h.action)}</li>`).join("")}</ul>
+      ${c.notes ? `<p class="soft">${esc(c.notes)}</p>` : ""}${c.source ? `<p class="note">Coordonnées : ${/^https?:/.test(c.source) ? ext(c.source, "source") : esc(c.source)}</p>` : ""}</details></td></tr>` : ""}`;
+  }).join("");
+  const due = I.contacts.filter(relanceDue).length;
+  return `${head([["Immo", "#/immo"], ["Contacts"]], "Contacts", { sub: `${I.contacts.length} agences et contacts · mis à jour par /immo` })}
+    ${immoTabs("contacts")}
+    <div class="grid g-hero">
+      ${kpi("Agences contactées",`${I.contacts.filter((c) => c.statut !== "a_contacter").length}`, `${n("a_contacter")} agence${n("a_contacter") > 1 ? "s" : ""} encore à contacter`)}
+      ${kpi("Relances à faire", `${due}`, due ? "aujourd'hui ou en retard" : "rien en retard", due ? "k-bad" : "k-ok")}
+      ${kpi("En contact suivi", `${n("en_contact")}`, "agent qui t'a répondu et connaît ta recherche")}
+    </div>
+    ${panel("Agences", I.contacts.length ? `<div class="scroll-x"><table class="grid-t contacts"><thead><tr><th>Agence</th><th>Statut</th><th>Dernier échange</th><th class="r">Relance</th><th>Canal · coordonnées</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">Aucun contact pour l'instant.</p>`,
+      { right: `<span class="muted xs">Raconte un échange à /immo : statut, date et prochaine relance sont mis à jour ici</span>` })}
+    <p class="note">Rythme conseillé : relance par téléphone 3 jours ouvrés après l'envoi, puis un point toutes les 2 à 3 semaines. Un agent qui t'a eu au téléphone pense à toi ; un mail seul s'oublie.</p>`;
 }
 
 // ------------------------------------------------------------ fiche bien
