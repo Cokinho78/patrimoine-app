@@ -11,3 +11,5 @@ GitHub avec un token fine-grained **Contents : Read-only** stocké dans le navig
 - CSP stricte : le token ne peut partir que vers `api.github.com`.
 - Dev local : `python3 dev/mock_github.py <copie de patrimoine-data>` puis
   `http://localhost:8787/?api=http://localhost:8787/api` (n'importe quel token).
+
+Workflow (flux de données, synchro, boucles métier) : `docs/workflow.html`.

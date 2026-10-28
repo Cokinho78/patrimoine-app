@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Workflow Patrimoine Desk</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout : bandeau d'en-tête, onglets, puis un plan de flux en 5 colonnes (sources → producteurs → repo de données → API → modèles → écrans)
+   avec une fiche de détail à droite. Reprend la DA de l'app (fond noir, Barlow, accent bleu) : un seul thème sombre, assumé. */
+:root {
+  --bg: #0b0c10;
+  --surface: #14161c;
+  --surface2: #1c1f27;
+  --sunken: #101217;
+  --line: #262a33;
+  --line2: #333845;
+  --text: #eef0f4;
+  --soft: #c5cad4;
+  --muted: #8b93a1;
+  --accent: #3b7bff;
+  --accent-soft: rgba(59, 123, 255, 0.16);
+  --up: #3ddc97;
+  --down: #ff6b6b;
+  --warn: #ffb547;
+  /* domaines */
+  --d-dep: #3b7bff;
+  --d-pat: #ffb35c;
+  --d-cfg: #5eead4;
+  --d-sor: #8b5cf6;
+  --d-immo: #ec4899;
+  --d-prev: #3ddc97;
+  --d-sys: #8b93a1;
+  --f-display: "Barlow Condensed", "Barlow", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { background: var(--bg); }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 var(--f-body); font-variant-numeric: tabular-nums;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+a { color: var(--accent); }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+code { background: var(--sunken); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; color: var(--soft); }
+h1, h2, h3, h4 { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.01em; margin: 0; text-wrap: balance; font-weight: 700; }
+.wrap { max-width: 1480px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.lbl { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.soft { color: var(--soft); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+/* ---------- en-tête */
+header.top { border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #0f1117, var(--bg)); }
+header.top .wrap { padding-block: 26px 0; display: grid; gap: 18px; }
+.brand { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.mark { width: 40px; height: 40px; border-radius: 10px; background: var(--accent); color: #fff; display: grid; place-items: center; font: 700 22px var(--f-display); flex: none; }
+.brand h1 { font-size: clamp(28px, 4.2vw, 44px); line-height: 1; }
+.brand h1 small { font-weight: 500; color: var(--muted); font-size: 0.55em; letter-spacing: 0.06em; margin-left: 6px; }
+.lede { margin: 0; max-width: 72ch; color: var(--soft); }
+.stats { display: flex; flex-wrap: wrap; gap: 10px 28px; }
+.stat b { display: block; font: 700 26px/1 var(--f-display); }
+.stat span { font-size: 12px; color: var(--muted); }
+nav.tabs { display: flex; gap: 4px; overflow-x: auto; margin-bottom: -1px; scrollbar-width: none; }
+nav.tabs a { text-decoration: none; color: var(--muted); padding: 10px 14px 12px; border-bottom: 2px solid transparent; font: 600 15px var(--f-display); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+nav.tabs a:hover { color: var(--text); }
+nav.tabs a[aria-current="page"] { color: var(--text); border-color: var(--accent); }
+
+main .wrap { padding-block: 22px 60px; }
+section.view { display: grid; gap: 18px; }
+.intro { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+.intro h2 { font-size: 26px; }
+.intro p { margin: 4px 0 0; color: var(--soft); max-width: 70ch; }
+
+/* ---------- filtres */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line2); background: var(--surface); border-radius: 999px; padding: 4px 11px; font-size: 13px; cursor: pointer; color: var(--soft); }
+.chip i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.chip:hover { border-color: var(--muted); color: var(--text); }
+.chip[aria-pressed="true"] { background: var(--surface2); border-color: var(--c, var(--accent)); color: var(--text); }
+
+/* ---------- plan de flux */
+.flow { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+.board-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--sunken); }
+.board { position: relative; min-width: 1060px; padding: 16px 14px 18px; display: grid; grid-template-columns: 1fr 1fr 1.2fr 34px 1fr 0.95fr; gap: 26px; }
+.board svg.edges { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.col { display: flex; flex-direction: column; gap: 8px; position: relative; z-index: 1; min-width: 0; }
+.col-h { padding: 0 2px 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.col-h .lbl { color: var(--soft); }
+.col-h small { display: block; font-size: 11.5px; color: var(--muted); line-height: 1.3; margin-top: 2px; }
+.col.spread { justify-content: flex-start; }
+.col.spread .stack { display: flex; flex-direction: column; justify-content: space-around; flex: 1; gap: 10px; }
+.node {
+  text-align: left; cursor: pointer; width: 100%;
+  background: var(--surface); border: 1px solid var(--line2); border-left: 3px solid var(--c);
+  border-radius: 8px; padding: 7px 10px 8px; display: grid; gap: 1px;
+  transition: opacity .15s, border-color .15s, background .15s, transform .15s;
+}
+.node b { font: 600 14.5px/1.2 var(--f-body); }
+.node span { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.node:hover { background: var(--surface2); border-color: var(--muted); border-left-color: var(--c); }
+.node.guess { border-style: dashed; border-left-style: solid; }
+.node.guess b::after { content: "hors repo"; font: 500 10px var(--f-body); text-transform: uppercase; letter-spacing: .08em; color: var(--warn); border: 1px solid rgba(255, 181, 71, .4); border-radius: 4px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; white-space: nowrap; display: inline-block; }
+.node.file { padding: 4px 9px 5px; border-radius: 6px; }
+.node.file b { font: 500 12.5px/1.3 var(--f-mono); }
+.fgroup { display: grid; gap: 4px; }
+.fgroup .lbl { font-size: 10.5px; margin: 4px 0 0 2px; color: var(--c); }
+.band { position: relative; z-index: 1; border: 1px dashed var(--line2); border-radius: 8px; background: repeating-linear-gradient(180deg, transparent 0 10px, rgba(59,123,255,.05) 10px 20px); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.band span { writing-mode: vertical-rl; transform: rotate(180deg); font: 600 12px var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--soft); white-space: nowrap; }
+.band:hover { border-color: var(--accent); }
+.band.sel { border-color: var(--accent); border-style: solid; background: var(--accent-soft); }
+.board.focus .node:not(.hit) { opacity: .22; }
+.board.focus .node.hit { border-color: var(--c); }
+.node.sel { background: var(--surface2); box-shadow: 0 0 0 2px var(--c); }
+path.e { fill: none; stroke: var(--line2); stroke-width: 1.2; opacity: .55; transition: opacity .15s, stroke .15s; }
+.board.focus path.e { opacity: .06; }
+.board.focus path.e.hit { opacity: .95; stroke: var(--c); stroke-width: 1.8; }
+
+/* ---------- fiche */
+aside.detail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 14px); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 14px; min-width: 0; max-height: calc(100vh - 28px); overflow: auto; }
+.detail .kind { display: flex; align-items: center; gap: 8px; }
+.detail .kind i { width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
+.detail h3 { font-size: 24px; line-height: 1.05; word-break: break-word; }
+.detail h3.mono { font: 600 17px/1.3 var(--f-mono); text-transform: none; }
+.detail p { margin: 0; color: var(--soft); }
+.detail ul { margin: 0; padding-left: 18px; color: var(--soft); display: grid; gap: 4px; }
+.detail .warnbox { border: 1px solid rgba(255,181,71,.35); background: rgba(255,181,71,.07); color: var(--warn); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; }
+.detail .schema { background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font: 12.5px/1.55 var(--f-mono); color: var(--soft); white-space: pre-wrap; word-break: break-word; }
+.detail .links { display: grid; gap: 6px; }
+.detail .links .chips .chip { font-size: 12.5px; }
+.detail .ref { font: 12.5px var(--f-mono); color: var(--muted); }
+.detail .ref b { color: var(--soft); font-weight: 500; }
+.legend { display: grid; gap: 7px; font-size: 13.5px; color: var(--soft); }
+.legend div { display: flex; gap: 9px; align-items: center; }
+.legend .sw { width: 26px; height: 16px; border-radius: 4px; border: 1px solid var(--line2); border-left: 3px solid var(--accent); background: var(--surface); flex: none; }
+.legend .sw.d { border-style: dashed; border-left-style: solid; border-left-color: var(--warn); }
+.legend .sw.b { border: 1px dashed var(--line2); background: repeating-linear-gradient(90deg, transparent 0 5px, rgba(59,123,255,.12) 5px 10px); }
+
+/* ---------- synchro */
+.scen { display: flex; flex-wrap: wrap; gap: 6px; }
+.scen button { border: 1px solid var(--line2); background: var(--surface); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-weight: 600; font-size: 14px; color: var(--soft); }
+.scen button:hover { color: var(--text); border-color: var(--muted); }
+.scen button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.sync-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: start; }
+ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: s; }
+ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; position: relative; padding-bottom: 14px; }
+ol.steps > li::before { content: counter(s); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font: 700 16px var(--f-display); background: var(--surface2); border: 1px solid var(--line2); color: var(--soft); z-index: 1; }
+ol.steps > li::after { content: ""; position: absolute; left: 15.5px; top: 32px; bottom: 0; width: 1px; background: var(--line2); }
+ol.steps > li:last-child::after { display: none; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 11px 14px 12px; display: grid; gap: 5px; min-width: 0; transition: opacity .2s; }
+.step-h { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.step-h h4 { font-size: 18px; }
+.step p { margin: 0; color: var(--soft); font-size: 14.5px; }
+.step .ref { font: 12px var(--f-mono); color: var(--muted); }
+.pill { font: 600 11px var(--f-body); text-transform: uppercase; letter-spacing: .07em; border-radius: 999px; padding: 2px 8px; border: 1px solid; }
+.pill.run { color: var(--up); border-color: rgba(61,220,151,.4); }
+.pill.cache { color: var(--accent); border-color: rgba(59,123,255,.45); }
+.pill.skip { color: var(--muted); border-color: var(--line2); }
+.pill.fail { color: var(--down); border-color: rgba(255,107,107,.45); }
+.pill.fall { color: var(--warn); border-color: rgba(255,181,71,.45); }
+li.s-skip .step { opacity: .45; }
+li.s-skip::before { opacity: .45; }
+li.s-fail::before { background: rgba(255,107,107,.15); border-color: var(--down); color: var(--down); }
+li.s-run::before, li.s-cache::before, li.s-fall::before { border-color: var(--muted); color: var(--text); }
+.step .why { font-size: 13.5px; color: var(--text); border-top: 1px dashed var(--line2); padding-top: 6px; margin-top: 2px; }
+.result { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 14px); display: grid; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.card h3 { font-size: 19px; }
+.card p { margin: 0; color: var(--soft); font-size: 14.5px; }
+.sidebar-mock { background: #08090c; border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 10px; }
+.sync-line { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.ok { background: var(--up); box-shadow: 0 0 0 3px rgba(61,220,151,.18); }
+.dot.err { background: var(--down); box-shadow: 0 0 0 3px rgba(255,107,107,.18); }
+.mockbtn { border: 1px solid var(--line2); border-radius: 7px; padding: 5px 10px; font-size: 13px; color: var(--soft); text-align: center; }
+.screen-mock { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 12px; font-size: 13.5px; color: var(--soft); display: grid; gap: 6px; }
+.screen-mock .alert { border: 1px solid rgba(255,107,107,.4); background: rgba(255,107,107,.08); color: var(--down); border-radius: 6px; padding: 7px 9px; }
+.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-size: 13.5px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; color: var(--soft); word-break: break-word; }
+
+/* ---------- boucles */
+.loops { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.loop { background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--c); border-radius: var(--r); padding: 16px 18px 18px; display: grid; gap: 12px; align-content: start; min-width: 0; }
+.loop-h { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.loop-h h3 { font-size: 22px; }
+.loop-h .lbl { color: var(--c); }
+.loop > p { margin: 0; color: var(--soft); }
+ol.chain { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; counter-reset: c; }
+ol.chain li { counter-increment: c; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; font-size: 14.5px; color: var(--soft); }
+ol.chain li::before { content: counter(c); font: 700 15px/24px var(--f-display); text-align: center; width: 24px; height: 24px; border-radius: 6px; background: var(--surface2); color: var(--c); }
+ol.chain li b { color: var(--text); font-weight: 600; }
+details.more { border-top: 1px solid var(--line); padding-top: 10px; }
+details.more summary { cursor: pointer; font-weight: 600; color: var(--text); font-size: 14px; }
+details.more summary::marker { color: var(--c); }
+details.more .inner { padding-top: 10px; display: grid; gap: 8px; font-size: 14px; color: var(--soft); }
+.weights { display: grid; gap: 5px; }
+.wrow { display: grid; grid-template-columns: 90px minmax(0, 1fr) 24px; gap: 8px; align-items: center; font-size: 13px; }
+.wbar { height: 8px; border-radius: 4px; background: var(--sunken); overflow: hidden; }
+.wbar i { display: block; height: 100%; background: var(--c); border-radius: 4px; }
+.flowline { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.flowline span { border: 1px solid var(--line2); border-radius: 6px; padding: 2px 8px; color: var(--soft); background: var(--sunken); }
+.flowline em { color: var(--muted); font-style: normal; }
+.verdicts { display: grid; gap: 5px; font-size: 13.5px; }
+.verdicts div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 10px; }
+.verdicts b { font-weight: 600; }
+
+/* ---------- historique */
+.timeline { display: grid; gap: 0; }
+.day { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 18px; padding: 14px 0; border-top: 1px solid var(--line); }
+.day:first-child { border-top: 0; }
+.day h3 { font-size: 20px; }
+.day h3 small { display: block; font: 500 12px var(--f-body); color: var(--muted); text-transform: none; letter-spacing: 0; margin-top: 2px; }
+.commits { display: grid; gap: 8px; }
+.commit { display: grid; grid-template-columns: 70px auto minmax(0, 1fr); gap: 10px; align-items: baseline; font-size: 14.5px; }
+.commit code { font-size: 12px; }
+.commit .tag { font: 600 11px var(--f-body); text-transform: uppercase; letter-spacing: .07em; color: var(--c); white-space: nowrap; }
+.commit p { margin: 0; color: var(--soft); }
+
+footer { border-top: 1px solid var(--line); }
+footer .wrap { padding-block: 16px 30px; font-size: 13px; color: var(--muted); }
+
+/* ---------- responsive */
+@media (max-width: 1280px) {
+  .flow { grid-template-columns: minmax(0, 1fr); }
+  aside.detail { position: static; max-height: none; }
+  .sync-grid { grid-template-columns: minmax(0, 1fr); }
+  .result { position: static; }
+}
+@media (max-width: 900px) {
+  .board-scroll { overflow: visible; border: 0; background: none; }
+  .board { min-width: 0; grid-template-columns: minmax(0, 1fr); padding: 0; gap: 22px; }
+  .board svg.edges { display: none; }
+  .band { min-height: 44px; }
+  .band span { writing-mode: horizontal-tb; transform: none; }
+  .col.spread .stack { flex: none; }
+  .loops { grid-template-columns: minmax(0, 1fr); }
+  .day { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .commit { grid-template-columns: auto minmax(0, 1fr); }
+  .commit .tag { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">€</div>
+      <h1>Patrimoine Desk <small>workflow</small></h1>
+    </div>
+    <p class="lede">Comment les données circulent, du relevé ou de l'annonce jusqu'à l'écran. L'app ne fait que lire : tout ce qu'elle affiche vient du repo privé <code>patrimoine-data</code>, écrit par des scripts et des commandes Claude qui vivent en dehors de ce repo.</p>
+    <div class="stats">
+      <div class="stat"><b>18 + 1/mois</b><span>fichiers JSON lus</span></div>
+      <div class="stat"><b>6</b><span>sections + Réglages</span></div>
+      <div class="stat"><b>0</b><span>dépendance, aucun build</span></div>
+      <div class="stat"><b>≈ 2 940</b><span>lignes de JS (11 modules)</span></div>
+      <div class="stat"><b>14</b><span>commits, 19 → 27 oct. 2026</span></div>
+    </div>
+    <nav class="tabs" aria-label="Vues">
+      <a href="#flux" data-view="flux">Flux de données</a>
+      <a href="#synchro" data-view="synchro">Cycle de synchro</a>
+      <a href="#boucles" data-view="boucles">Boucles métier</a>
+      <a href="#historique" data-view="historique">Historique</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+
+    <!-- ============================================================ FLUX -->
+    <section class="view" id="v-flux">
+      <div class="intro">
+        <div>
+          <h2>Flux de données</h2>
+          <p>Clique sur un bloc pour voir d'où il tire ses données et ce qu'il alimente. Les blocs en pointillés sont déduits des mentions dans le code : leur outil n'est pas dans ce repo.</p>
+        </div>
+        <div class="chips" id="domains" role="group" aria-label="Filtrer par domaine"></div>
+      </div>
+      <div class="flow">
+        <div class="board-scroll">
+          <div class="board" id="board">
+            <svg class="edges" id="edges" aria-hidden="true"></svg>
+            <div class="col spread" data-col="0"><div class="col-h"><div class="lbl">1 · Sources</div><small>Banques, marchés, annonces, toi</small></div><div class="stack"></div></div>
+            <div class="col spread" data-col="1"><div class="col-h"><div class="lbl">2 · Producteurs</div><small>Scripts et commandes Claude</small></div><div class="stack"></div></div>
+            <div class="col" data-col="2"><div class="col-h"><div class="lbl">3 · patrimoine-data</div><small>Repo privé, JSON uniquement</small></div></div>
+            <button class="band" id="band" type="button" aria-label="API GitHub, lecture seule : voir le détail"><span>API GitHub · lecture seule · cache par sha</span></button>
+            <div class="col spread" data-col="4"><div class="col-h"><div class="lbl">4 · Modèles</div><small>Calculs dans le navigateur</small></div><div class="stack"></div></div>
+            <div class="col spread" data-col="5"><div class="col-h"><div class="lbl">5 · Écrans</div><small>Routes <code>#/…</code></small></div><div class="stack"></div></div>
+          </div>
+        </div>
+        <aside class="detail" id="detail" aria-live="polite"></aside>
+      </div>
+    </section>
+
+    <!-- ============================================================ SYNCHRO -->
+    <section class="view" id="v-synchro" hidden>
+      <div class="intro">
+        <div>
+          <h2>Cycle de synchro</h2>
+          <p>Ce que fait <code>loadAll()</code> à l'ouverture et à chaque clic sur « Synchroniser ». Choisis une situation pour voir les étapes qui tournent, celles qui lisent le cache et ce que tu vois à l'écran.</p>
+        </div>
+        <div class="scen" id="scen" role="group" aria-label="Situation"></div>
+      </div>
+      <div class="sync-grid">
+        <ol class="steps" id="steps"></ol>
+        <div class="result" id="result"></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ BOUCLES -->
+    <section class="view" id="v-boucles" hidden>
+      <div class="intro">
+        <div>
+          <h2>Boucles métier</h2>
+          <p>Les quatre cycles que l'app sert, dans l'ordre où ils se déroulent. Les règles et les seuils viennent du code.</p>
+        </div>
+      </div>
+      <div class="loops" id="loops"></div>
+    </section>
+
+    <!-- ============================================================ HISTORIQUE -->
+    <section class="view" id="v-historique" hidden>
+      <div class="intro">
+        <div>
+          <h2>Historique</h2>
+          <p>Les 14 commits du repo <code>patrimoine-app</code>, du plus récent au plus ancien. Filtre par domaine pour suivre une fonctionnalité.</p>
+        </div>
+        <div class="chips" id="hdomains" role="group" aria-label="Filtrer par domaine"></div>
+      </div>
+      <div class="timeline" id="timeline"></div>
+    </section>
+
+  </div>
+</main>
+<footer><div class="wrap">Établi à partir du code de <code>Cokinho78/patrimoine-app</code> au commit <code>c3688f8</code>. Aucune donnée personnelle : seuls les noms de fichiers et de champs lus par l'app figurent ici.</div></footer>
+
+<script>
+(() => {
+  const DOM = {
+    dep: { nom: "Dépenses", c: "var(--d-dep)" },
+    pat: { nom: "Patrimoine", c: "var(--d-pat)" },
+    cfg: { nom: "Config & budget", c: "var(--d-cfg)" },
+    prev: { nom: "Prévisionnel", c: "var(--d-prev)" },
+    immo: { nom: "Immo", c: "var(--d-immo)" },
+    sor: { nom: "Sorare", c: "var(--d-sor)" },
+    sys: { nom: "Système", c: "var(--d-sys)" },
+  };
+  const KIND = ["Source", "Producteur", "Fichier de données", "", "Modèle", "Écran"];
+
+  // ------------------------------------------------------------------ nœuds
+  // col, dom (domaine principal pour la couleur), doms (filtres), guess = hors repo / déduit
+  const N = [
+    // 1 · sources
+    { id: "src_bnp", col: 0, dom: "dep", t: "Comptes courants BNP", s: "transactions, salaire, loyer",
+      d: "Les mouvements du mois : salaire, loyer, versement mensuel sur l'assurance-vie BNP et toutes les dépenses. Ils deviennent un fichier par mois, transactions catégorisées.",
+      li: ["15 catégories, dont « Exceptionnel » (exclu des dépenses courantes) et « À revoir ».", "Le versement AV compte comme de l'épargne, pas comme une dépense."], guess: true },
+    { id: "src_comptes", col: 0, dom: "pat", t: "Relevés d'épargne", s: "Livrets, PEA Boursorama, AV BNP",
+      d: "Soldes de fin de mois de chaque compte, lignes détenues et poids, parts (quantité, PRU, valeur de part) et fonds euros.", guess: true },
+    { id: "src_natixis", col: 0, dom: "pat", t: "Natixis Interépargne", s: "PEE et PERCOL",
+      d: "Épargne salariale en FCPE non cotés : l'app garde le dernier relevé tel quel, sans revalorisation au jour.",
+      li: ["À refaire après chaque versement ou abondement, et au moins tous les 6 mois.", "Bloquée : exclue de l'épargne de précaution et de l'apport locatif."], guess: true },
+    { id: "src_cours", col: 0, dom: "pat", t: "Cours de clôture", s: "par ISIN et ticker",
+      d: "Une clôture par jour et par ligne. Sert à revaloriser PEA et assurance-vie au jour, entre deux relevés.", guess: true },
+    { id: "src_toi", col: 0, dom: "sys", doms: ["cfg", "immo", "sor", "prev"], t: "Toi", s: "cibles, envies, visites, décisions",
+      d: "Tu fixes le budget, le plan d'action et les envies, tu tranches sur les visites, les offres et la vente des cartes Sorare (par Claude), et tu colles le token dans Réglages.",
+      li: ["Rien ne s'écrit depuis l'app : elle est en lecture seule."] },
+    { id: "src_sorare", col: 0, dom: "sor", t: "API Sorare + CoinGecko", s: "prix des cartes, cours ETH",
+      d: "API publique Sorare pour les ventes et les offres par joueur et saison, CoinGecko pour convertir l'ETH en euros." },
+    { id: "src_annonces", col: 0, dom: "immo", t: "Bien'ici + alertes e-mail", s: "SeLoger, Leboncoin, PAP via Gmail",
+      d: "Bien'ici pour les annonces d'agences des 5 communes ciblées. SeLoger, Leboncoin et PAP bloquent les robots : la veille lit leurs alertes e-mail dans Gmail, sans contourner aucune protection." },
+    { id: "src_marche", col: 0, dom: "immo", t: "DVF + ANIL", s: "ventes réelles, carte des loyers",
+      d: "DVF donne la médiane et le 75ᵉ centile des prix au m² des petites surfaces vendues par commune. La carte des loyers ANIL 2025 donne un loyer de référence au m² (T1-T2 et T3+).",
+      li: ["Aucune valeur n'est saisie à la main."] },
+
+    // 2 · producteurs
+    { id: "p_releves", col: 1, dom: "dep", doms: ["dep", "pat"], t: "Mise à jour des relevés", s: "relevés → JSON mensuels",
+      d: "Transforme les relevés bancaires et d'épargne en fichiers JSON. L'outil, sa fréquence et son mode de catégorisation ne sont pas dans ce repo : seuls le format de sortie et le rythme mensuel se lisent dans le code.", guess: true },
+    { id: "p_cours", col: 1, dom: "pat", t: "Collecte des cours", s: "écrit cours.json",
+      d: "Récupère les clôtures quotidiennes des lignes du PEA et de l'AV et note les erreurs de cotation (affichées en tête de l'écran PEA / AV). Producteur non visible ici.", guess: true },
+    { id: "p_saisie", col: 1, dom: "cfg", doms: ["cfg", "prev"], t: "Fichiers de config", s: "budget, plan, prévisionnel",
+      d: "Les cibles et hypothèses que tu poses : budget par catégorie, plan d'action, versements, événements et envies du prévisionnel. Qui les écrit n'apparaît pas dans ce repo.", guess: true },
+    { id: "p_sorare_valo", col: 1, dom: "sor", t: "sorare_valo.py", s: "valorise le club",
+      d: "Calcule pour chaque carte une valeur prudente, puis le total en ETH et en euros, la mise et la part due à l'ETH et aux cartes.",
+      li: ["Valeur prudente = min(médiane des 5 dernières ventes même joueur et même saison, offre la moins chère du joueur).", "L'écrit dans sorare/valo.json ; l'historique sert à la variation depuis le passage précédent."],
+      ref: "cité dans js/app.js:710 et js/model.js:98" },
+    { id: "p_sorare_dec", col: 1, dom: "sor", t: "/sorare decision", s: "commande Claude",
+      d: "Rédige l'aide à la décision et le plan de vente lus par l'onglet Loisir – Sorare. « La décision reste la sienne. »", ref: "js/app.js:738" },
+    { id: "p_veille", col: 1, dom: "immo", t: "Tâche planifiée /immo", s: "lundi et jeudi, 8 h",
+      d: "Lance la veille Bien'ici et lit les alertes e-mail, note et filtre les nouvelles annonces (DPE, budget, viager, résidences gérées) et les pousse dans le repo.",
+      li: ["Le lundi : un point hebdo avec 3 actions pour la semaine, affiché sur le cockpit.", "Une notification avec les meilleures nouveautés."], ref: "décrit dans js/immo.js:441" },
+    { id: "p_immo_cmd", col: 1, dom: "immo", t: "/immo", s: "commande Claude",
+      d: "Écrit les statuts des biens, les notes de visite et les hypothèses vérifiées dans immo/suivi.json. Les contacts d'agences et l'avancement des alertes passent probablement par elle aussi (« Dis à /immo quand c'est fait »).", ref: "js/immo.js:2" },
+    { id: "p_marche", col: 1, dom: "immo", t: "immo_marche.py", s: "rafraîchit le marché",
+      d: "Télécharge DVF et la carte des loyers ANIL et écrit immo/marche.json, avec la méthode et l'URL de chaque source.", ref: "js/immo.js:430" },
+
+    // 3 · fichiers
+    { id: "f_dep", col: 2, grp: "Dépenses", dom: "dep", t: "depenses/AAAA-MM.json", file: true,
+      d: "Un fichier par mois. Tous les fichiers sous depenses/ sont lus et triés par nom.",
+      sc: "{ mois, revenus,\n  charges_fixes: { loyer, av_bnp },\n  transactions: [ { cat, montant, … } ] }" },
+    { id: "f_hist", col: 2, grp: "Patrimoine", dom: "pat", t: "historique.json", file: true,
+      d: "La colonne vertébrale du patrimoine : un solde par compte et par mois. Patrimoine net = somme des soldes.",
+      sc: "{ comptes: { id: { nom, groupe, plafond, taux, blocage } },\n  mois: [ { mois, soldes: { id: € } } ] }\ngroupe ∈ livrets | av | pea | salariale | cc" },
+    { id: "f_pos", col: 2, grp: "Patrimoine", dom: "pat", t: "positions.json", file: true,
+      d: "Lignes et poids du PEA et de l'AV BNP. Sert aux actions de rééquilibrage (Banques dans le PEA, Tech dans l'AV).",
+      sc: "{ pea: { lignes: [ { nom, poids } ], versements_estimes },\n  av_bnp: { lignes: [ … ] } }" },
+    { id: "f_ppea", col: 2, grp: "Patrimoine", dom: "pat", t: "positions_pea.json", file: true,
+      d: "Instantanés des parts détenues dans le PEA, datés.",
+      sc: "{ instantanes: [ { date,\n    lignes: [ { isin, nom, quantite, pru, vl } ] } ] }" },
+    { id: "f_pav", col: 2, grp: "Patrimoine", dom: "pat", t: "positions_av.json", file: true,
+      d: "Même format que le PEA, plus le fonds euros (montant constant).",
+      sc: "{ instantanes: [ { date, fonds_euros,\n    lignes: [ { isin, quantite, pru, vl } ] } ] }" },
+    { id: "f_pes", col: 2, grp: "Patrimoine", dom: "pat", t: "positions_es.json", file: true,
+      d: "Relevés Natixis. Seul le dernier instantané est affiché.",
+      sc: "{ instantanes: [ { date,\n    lignes: [ { nom, plan, type, quantite, vl, montant } ] } ] }" },
+    { id: "f_cours", col: 2, grp: "Patrimoine", dom: "pat", t: "cours.json", file: true,
+      d: "Clôtures quotidiennes par ISIN.",
+      sc: "{ lignes: { isin: { ticker, clotures: { date: prix } } },\n  erreurs: [ … ] }" },
+    { id: "f_budget", col: 2, grp: "Config", dom: "cfg", t: "config/budget.json", file: true,
+      d: "Toutes les cibles chiffrées : budget mensuel par catégorie, salaire, loyer, épargne visée, apport locatif.",
+      sc: "{ categories: { cat: €/mois }, salaire_net, loyer,\n  epargne_cible, apport_locatif,\n  epargne_livrets_mensuelle, cible_pea_banques,\n  versement_pea_mensuel, enveloppe_voyages_annuelle }" },
+    { id: "f_plan", col: 2, grp: "Config", dom: "cfg", t: "config/plan.json", file: true,
+      d: "Le plan d'action. Les priorités hautes non faites remontent dans les actions.",
+      sc: "{ maj, actions: [ { action, priorite, statut, echeance, impact } ] }" },
+    { id: "f_prev", col: 2, grp: "Config", dom: "prev", doms: ["prev", "cfg"], t: "config/previsionnel.json", file: true,
+      d: "Hypothèses du prévisionnel : scénarios de versements, événements datés, envies, plancher du compte BNP, rendements.",
+      sc: "{ versements: { actuel, … : { nom, lignes } },\n  evenements, envies, plancher_bnp, horizon_fin,\n  rendements: { uc, salariale }: { prudent, central, dynamique },\n  immo: { date_achat, cout_total, prix_fai, … } }" },
+    { id: "f_svalo", col: 2, grp: "Sorare", dom: "sor", t: "sorare/valo.json", file: true,
+      d: "Dernière valorisation du club.",
+      sc: "{ date, club, nb_cartes, eth_eur,\n  total_prudent_eur, total_prudent_eth, total_median_eur,\n  mise_eur, effet_eth_eur, effet_cartes_eur,\n  cartes: [ { joueur, saison, score_l15, mediane_eur,\n    plancher_eur, prudente_eur, derniere_vente } ] }" },
+    { id: "f_shist", col: 2, grp: "Sorare", dom: "sor", t: "sorare/historique.json", file: true,
+      d: "Valorisations successives : l'avant-dernière sert à afficher la variation." },
+    { id: "f_sdec", col: 2, grp: "Sorare", dom: "sor", t: "sorare/decision.json", file: true,
+      d: "Aide à la décision et plan de vente, rédigés par /sorare decision." },
+    { id: "f_iconf", col: 2, grp: "Immo", dom: "immo", t: "immo/config.json", file: true,
+      d: "Sans ce fichier, l'onglet Immo reste vide. Il porte les critères, le financement, la fiscalité, les étapes du projet et les alertes à créer.",
+      sc: "{ criteres: { communes, budget_total_max, dpe_exclus,\n    surface_min, mots_exclus, gare_ideal_min, gare_max_min },\n  financement, exploitation, fiscalite, cible,\n  etapes: [ { titre, statut, taches } ], alertes }" },
+    { id: "f_iann", col: 2, grp: "Immo", dom: "immo", t: "immo/annonces.json", file: true,
+      d: "Les annonces collectées par la veille.", sc: "{ maj, annonces: [ { id, titre, prix, surface, pieces,\n    insee, dpe, charges_copro_an, etage, … } ] }" },
+    { id: "f_isuivi", col: 2, grp: "Immo", dom: "immo", t: "immo/suivi.json", file: true,
+      d: "Ce que tu as vérifié. Une hypothèse vérifiée passe avant celle de l'annonce.", sc: "{ biens: { id: { statut, hypotheses: { clé: { v, src } } } } }\nstatut ∈ nouveau | a_visiter | visite | offre | ecarte" },
+    { id: "f_ijour", col: 2, grp: "Immo", dom: "immo", t: "immo/journal.json", file: true,
+      d: "Passages de veille, points hebdo et notes, du plus récent au plus ancien.", sc: "{ entrees: [ { date, type: veille | point | note,\n    titre, texte, actions } ] }" },
+    { id: "f_icont", col: 2, grp: "Immo", dom: "immo", t: "immo/contacts.json", file: true,
+      d: "Agences contactées et relances.", sc: "{ contacts: [ { statut, relance, … } ] }\nstatut ∈ a_contacter | envoye | en_contact | a_relancer | en_pause" },
+    { id: "f_imarche", col: 2, grp: "Immo", dom: "immo", t: "immo/marche.json", file: true,
+      d: "Prix et loyers de référence par commune.", sc: "{ communes: [ { insee, prix: { petites_surfaces: { mediane, p75 } },\n    loyer_t1t2, loyer_t3plus, … } ], sources }" },
+
+    // 4 · modèles
+    { id: "m_model", col: 4, dom: "dep", doms: ["dep", "pat", "sor"], t: "buildModel", s: "model.js · dépenses et patrimoine",
+      d: "Agrège tout le reste : dépenses nettes par mois et par catégorie, épargne, enveloppes, Sorare.",
+      li: ["Dépenses courantes = toutes les catégories sauf Exceptionnel.", "Épargne du mois = revenus − dépenses − exceptionnel − loyer.", "Mois « salaire absent » si revenus < 50 % du salaire net.", "Sorare reste hors du total financier."], ref: "js/model.js:37" },
+    { id: "m_live", col: 4, dom: "pat", t: "live()", s: "model.js · PEA et AV au jour",
+      d: "Valeur quotidienne = quantités du dernier instantané antérieur au jour × dernière clôture connue. Une ligne sans cotation garde la valeur de part du relevé, signalée « valeur figée ».",
+      li: ["Patrimoine estimé = dernier relevé mensuel + (valeur au jour − solde du relevé) pour le PEA et l'AV."], ref: "js/model.js:113" },
+    { id: "m_actions", col: 4, dom: "cfg", doms: ["cfg", "pat", "dep"], t: "computeActions", s: "model.js · actions chiffrées",
+      d: "Règles mécaniques sur les soldes du dernier relevé et tes cibles, triées haute → moyenne → plan → info.",
+      li: ["Livret A au plafond → verser sur le LDDS.", "Apport locatif : ce qui manque sur les livrets et en combien de mois.", "PEA : Banques au-dessus de la cible + 2 pts → vendre ou diluer.", "AV BNP : Disruptive Technology au-dessus de 7 % → arbitrer vers 5 %.", "Jusqu'à 3 catégories à plus de 130 % du budget sur 3 mois.", "Priorités hautes encore ouvertes du plan."], ref: "js/model.js:151" },
+    { id: "m_prev", col: 4, dom: "prev", t: "buildPrev & longTerme", s: "prev-model.js · 15 mois et 10 ans",
+      d: "Projette le compte courant BNP mois par mois depuis le dernier relevé réel, cale les envies sans passer sous le plancher, puis prolonge le patrimoine sur 10 ans en trois scénarios.",
+      li: ["Dépenses : Budget ou rythme réel des 12 derniers mois.", "Voyages : l'enveloppe annuelle restante est répartie sur les mois.", "Avec ou sans achat immo (mensualité, loyer, vacance).", "Épargne de précaution = 3 mois de dépenses courantes + loyer."], ref: "js/prev-model.js:35, :170" },
+    { id: "m_immo", col: 4, dom: "immo", t: "buildImmo & analyse", s: "immo-model.js · note /20",
+      d: "Pour chaque annonce : hypothèses sourcées, simulation LMNP réel, exclusions, alertes, atouts, note sur 20 et verdict.",
+      li: ["Chaque valeur porte sa source : Annonce, Source officielle, Vérifié, Hypothèse ou Calcul.", "Une valeur absente reste « hypothèse » et s'affiche comme telle."], ref: "js/immo-model.js:19, :240" },
+
+    // 5 · écrans
+    { id: "s_acc", col: 5, dom: "sys", doms: ["dep", "pat", "immo", "prev", "cfg"], t: "Tableau de bord", s: "#/accueil",
+      d: "Patrimoine net (estimé au jour si possible), épargne sur les mois complets, dépenses courantes sur 3 mois face au budget, prochaine étape immo, encart prévisionnel, courbe du patrimoine, répartition, où part le salaire, 3 actions prioritaires, dépenses du dernier mois." },
+    { id: "s_pat", col: 5, dom: "pat", doms: ["pat", "sor"], t: "Patrimoine", s: "#/patrimoine",
+      d: "Synthèse · Livrets · Assurance-vie · PEA · Épargne salariale · Loisir – Sorare. PEA et AV avec courbe quotidienne et plus-values latentes par ligne." },
+    { id: "s_dep", col: 5, dom: "dep", t: "Dépenses", s: "#/depenses",
+      d: "Vue d'ensemble · Mois · Catégories · Transactions. On descend période › mois › catégorie › marchand › transaction, avec heatmap face au budget." },
+    { id: "s_act", col: 5, dom: "cfg", t: "Actions", s: "#/actions",
+      d: "Actions chiffrées et plan d'action complet. « Ce n'est pas un conseil en investissement personnalisé. »" },
+    { id: "s_prev", col: 5, dom: "prev", t: "Prévisionnel", s: "#/previsionnel",
+      d: "Trésorerie BNP mois par mois (et détail d'un mois) · Envies · Patrimoine 15 mois · Long terme. Bascules Budget / Rythme réel et scénarios de versements." },
+    { id: "s_immo", col: 5, dom: "immo", t: "Immo", s: "#/immo",
+      d: "Cockpit · Annonces notées · Contacts · Marché · Veille, et la fiche d'un bien avec simulateur LMNP (prix négocié, loyer, travaux, taux, apport, durée)." },
+    { id: "s_reg", col: 5, dom: "sys", t: "Réglages", s: "#/reglages",
+      d: "Compte, repo, branche et token GitHub, gardés dans ce navigateur. Sans token, toute route renvoie ici. « Oublier le token » efface toutes les clés patrimoine:* du stockage local.",
+      li: ["Token fine-grained, uniquement patrimoine-data, Contents : Read-only, expiration 1 an."], ref: "js/app.js:684" },
+  ];
+
+  const E = [
+    ["src_bnp", "p_releves"], ["src_comptes", "p_releves"], ["src_natixis", "p_releves"], ["src_cours", "p_cours"],
+    ["src_toi", "p_saisie"], ["src_toi", "p_immo_cmd"], ["src_toi", "p_sorare_dec"],
+    ["src_sorare", "p_sorare_valo"], ["src_annonces", "p_veille"], ["src_marche", "p_marche"],
+    ["p_releves", "f_dep"], ["p_releves", "f_hist"], ["p_releves", "f_pos"], ["p_releves", "f_ppea"], ["p_releves", "f_pav"], ["p_releves", "f_pes"],
+    ["p_cours", "f_cours"],
+    ["p_saisie", "f_budget"], ["p_saisie", "f_plan"], ["p_saisie", "f_prev"],
+    ["p_sorare_valo", "f_svalo"], ["p_sorare_valo", "f_shist"], ["p_sorare_dec", "f_sdec"],
+    ["p_veille", "f_iann"], ["p_veille", "f_ijour"],
+    ["p_immo_cmd", "f_isuivi"], ["p_immo_cmd", "f_icont"], ["p_immo_cmd", "f_iconf"],
+    ["p_marche", "f_imarche"],
+    ["f_dep", "m_model"], ["f_hist", "m_model"], ["f_pos", "m_model"], ["f_pes", "m_model"], ["f_budget", "m_model"],
+    ["f_svalo", "m_model"], ["f_shist", "m_model"], ["f_sdec", "m_model"],
+    ["f_ppea", "m_live"], ["f_pav", "m_live"], ["f_cours", "m_live"],
+    ["f_hist", "m_actions"], ["f_pos", "m_actions"], ["f_budget", "m_actions"], ["f_plan", "m_actions"], ["f_dep", "m_actions"],
+    ["f_prev", "m_prev"], ["f_dep", "m_prev"], ["f_hist", "m_prev"], ["f_budget", "m_prev"], ["f_iconf", "m_prev"],
+    ["f_iconf", "m_immo"], ["f_iann", "m_immo"], ["f_isuivi", "m_immo"], ["f_ijour", "m_immo"], ["f_icont", "m_immo"], ["f_imarche", "m_immo"],
+    ["m_model", "s_acc"], ["m_model", "s_pat"], ["m_model", "s_dep"],
+    ["m_live", "s_acc"], ["m_live", "s_pat"],
+    ["m_actions", "s_acc"], ["m_actions", "s_act"], ["m_actions", "s_pat"],
+    ["m_prev", "s_prev"], ["m_prev", "s_acc"],
+    ["m_immo", "s_immo"], ["m_immo", "s_acc"],
+  ];
+
+  const byId = Object.fromEntries(N.map((n) => [n.id, n]));
+  const outs = {}, ins = {};
+  for (const [a, b] of E) { (outs[a] ||= []).push(b); (ins[b] ||= []).push(a); }
+  const doms = (n) => n.doms || [n.dom];
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ------------------------------------------------------------------ rendu du plan
+  const board = document.getElementById("board");
+  const svg = document.getElementById("edges");
+  const nodeBtn = (n) => `<button type="button" class="node${n.file ? " file" : ""}${n.guess ? " guess" : ""}" data-id="${n.id}" style="--c:${DOM[n.dom].c}"><b>${esc(n.t)}</b>${n.s ? `<span>${esc(n.s)}</span>` : ""}</button>`;
+  for (const c of [0, 1, 4, 5]) {
+    board.querySelector(`[data-col="${c}"] .stack`).innerHTML = N.filter((n) => n.col === c).map(nodeBtn).join("");
+  }
+  const files = N.filter((n) => n.col === 2);
+  const groups = [...new Set(files.map((f) => f.grp))];
+  const gColor = { "Dépenses": "dep", "Patrimoine": "pat", "Config": "cfg", "Sorare": "sor", "Immo": "immo" };
+  board.querySelector('[data-col="2"]').insertAdjacentHTML("beforeend", groups.map((g) =>
+    `<div class="fgroup" style="--c:${DOM[gColor[g]].c}"><div class="lbl">${g}</div>${files.filter((f) => f.grp === g).map(nodeBtn).join("")}</div>`).join(""));
+
+  const el = (id) => board.querySelector(`[data-id="${id}"]`);
+  function drawEdges() {
+    const br = board.getBoundingClientRect();
+    if (getComputedStyle(svg).display === "none") return;
+    svg.setAttribute("viewBox", `0 0 ${br.width} ${br.height}`);
+    svg.innerHTML = E.map(([a, b]) => {
+      const ra = el(a).getBoundingClientRect(), rb = el(b).getBoundingClientRect();
+      const x1 = ra.right - br.left, y1 = ra.top + ra.height / 2 - br.top;
+      const x2 = rb.left - br.left, y2 = rb.top + rb.height / 2 - br.top;
+      const dx = Math.max(24, (x2 - x1) * 0.5);
+      return `<path class="e" data-a="${a}" data-b="${b}" style="--c:${DOM[byId[a].dom].c}" d="M${x1.toFixed(1)} ${y1.toFixed(1)} C${(x1 + dx).toFixed(1)} ${y1.toFixed(1)}, ${(x2 - dx).toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}"/>`;
+    }).join("");
+    applyFocus();
+  }
+
+  // ------------------------------------------------------------------ sélection
+  let sel = null;   // id de nœud ou "band"
+  let dom = null;   // filtre domaine
+  function closure(id) {
+    const hit = new Set([id]);
+    const walk = (map) => { const q = [id]; while (q.length) for (const y of map[q.pop()] || []) if (!hit.has(y)) { hit.add(y); q.push(y); } };
+    walk(outs); walk(ins);
+    return hit;
+  }
+  function applyFocus() {
+    let hit = null;
+    if (sel && sel !== "band") hit = closure(sel);
+    else if (dom) hit = new Set(N.filter((n) => doms(n).includes(dom)).map((n) => n.id));
+    board.classList.toggle("focus", !!hit);
+    board.querySelectorAll(".node").forEach((b) => {
+      b.classList.toggle("hit", !!hit && hit.has(b.dataset.id));
+      b.classList.toggle("sel", b.dataset.id === sel);
+    });
+    svg.querySelectorAll("path").forEach((p) => {
+      const on = !!hit && hit.has(p.dataset.a) && hit.has(p.dataset.b);
+      p.classList.toggle("hit", on);
+      if (on && sel && sel !== "band") p.style.setProperty("--c", DOM[byId[sel].dom].c);
+      else p.style.setProperty("--c", DOM[byId[p.dataset.a].dom].c);
+    });
+    document.getElementById("band").classList.toggle("sel", sel === "band");
+  }
+
+  const linkChips = (ids) => ids?.length ? `<div class="chips">${ids.map((i) => `<button type="button" class="chip" data-go="${i}" style="--c:${DOM[byId[i].dom].c}"><i></i>${esc(byId[i].t)}</button>`).join("")}</div>` : `<span class="muted">—</span>`;
+  const detail = document.getElementById("detail");
+  function showDetail() {
+    if (sel === "band") {
+      detail.innerHTML = `
+        <div class="kind"><i style="--c:var(--accent)"></i><span class="lbl">Transport</span></div>
+        <h3>API GitHub, lecture seule</h3>
+        <p>Le navigateur lit <code>patrimoine-data</code> directement sur l'API GitHub avec ton token. Aucun serveur entre les deux.</p>
+        <ul>
+          <li>1 appel <code>git/trees/main?recursive=1</code> pour la liste des fichiers et leur sha.</li>
+          <li>1 appel <code>git/blobs/&lt;sha&gt;</code> par fichier modifié depuis la dernière fois, 6 en parallèle.</li>
+          <li>Chaque blob est gardé dans le stockage local sous son sha : un fichier inchangé ne se retélécharge jamais.</li>
+          <li>Hors réseau : dernier arbre connu + blobs en cache.</li>
+          <li>CSP stricte : le token ne peut partir que vers <code>api.github.com</code>. Un autre hôte via <code>?api=</code> n'est accepté qu'en localhost, même origine.</li>
+        </ul>
+        <div class="ref"><b>js/store.js</b> · listFiles :85 · readJSON :102 · readMany :114</div>
+        <p><a href="#synchro">Voir le cycle de synchro pas à pas →</a></p>`;
+      return;
+    }
+    if (!sel) {
+      detail.innerHTML = `
+        <div class="kind"><i style="--c:var(--accent)"></i><span class="lbl">Lecture du plan</span></div>
+        <h3>Cinq étages, un seul sens</h3>
+        <p>Les données descendent de gauche à droite. L'app n'écrit jamais : pour changer un chiffre, on change le fichier dans <code>patrimoine-data</code>, puis on synchronise.</p>
+        <div class="legend">
+          <div><span class="sw"></span>Bloc lu dans le code de l'app</div>
+          <div><span class="sw d"></span>Déduit des mentions dans le code, outil hors repo</div>
+          <div><span class="sw b"></span>Passage par l'API GitHub</div>
+        </div>
+        <p class="muted">Astuce : un filtre de domaine en haut à droite isole Dépenses, Immo, Sorare… Clique deux fois sur un bloc pour le désélectionner.</p>`;
+      return;
+    }
+    const n = byId[sel];
+    detail.innerHTML = `
+      <div class="kind" style="--c:${DOM[n.dom].c}"><i></i><span class="lbl">${KIND[n.col]} · ${doms(n).map((d) => DOM[d].nom).join(", ")}</span></div>
+      <h3 class="${n.file ? "mono" : ""}">${esc(n.t)}</h3>
+      ${n.s ? `<div class="muted" style="margin-top:-8px">${esc(n.s)}</div>` : ""}
+      ${n.guess ? `<div class="warnbox">L'outil derrière ce bloc n'est pas dans ce repo. Ce qui est écrit ici se déduit du format des fichiers et des textes de l'app.</div>` : ""}
+      <p>${esc(n.d)}</p>
+      ${n.li ? `<ul>${n.li.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${n.sc ? `<div><div class="lbl" style="margin-bottom:6px">Champs lus</div><div class="schema">${esc(n.sc)}</div></div>` : ""}
+      ${n.ref ? `<div class="ref"><b>Code</b> · ${esc(n.ref)}</div>` : ""}
+      <div class="links"><div class="lbl">Reçoit de</div>${linkChips(ins[n.id])}</div>
+      <div class="links"><div class="lbl">Alimente</div>${linkChips(outs[n.id])}</div>`;
+  }
+  function select(id, scroll) {
+    sel = sel === id ? null : id;
+    applyFocus(); showDetail();
+    if (scroll && innerWidth <= 1280) {
+      const r = detail.getBoundingClientRect();
+      if (r.top > innerHeight - 80 || r.bottom < 0) detail.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    }
+  }
+  board.addEventListener("click", (e) => {
+    const b = e.target.closest(".node");
+    if (b) select(b.dataset.id, true);
+    else if (e.target.closest("#band")) select("band", true);
+  });
+  detail.addEventListener("click", (e) => {
+    const g = e.target.closest("[data-go]");
+    if (!g) return;
+    sel = null; select(g.dataset.go, false);
+    if (innerWidth <= 900) el(g.dataset.go).scrollIntoView({ block: "center" });
+  });
+
+  // filtres domaine
+  const domainChips = (host, cur, onPick) => {
+    const keys = ["dep", "pat", "cfg", "prev", "immo", "sor"];
+    const render = () => {
+      host.innerHTML = keys.map((k) => `<button type="button" class="chip" data-d="${k}" aria-pressed="${cur() === k}" style="--c:${DOM[k].c}"><i></i>${DOM[k].nom}</button>`).join("");
+    };
+    host.addEventListener("click", (e) => { const b = e.target.closest("[data-d]"); if (b) { onPick(cur() === b.dataset.d ? null : b.dataset.d); render(); } });
+    render();
+  };
+  domainChips(document.getElementById("domains"), () => dom, (d) => { dom = d; sel = null; applyFocus(); showDetail(); });
+
+  showDetail();
+
+  // ------------------------------------------------------------------ synchro
+  const STEPS = [
+    { t: "Démarrage", ref: "js/app.js:884", p: "La page affiche la route du hash (<code>#/accueil</code> par défaut) puis lance <code>loadAll()</code>. Pas de build : <code>index.html</code> charge <code>js/app.js</code> en module." },
+    { t: "Lecture des réglages", ref: "js/store.js:24", p: "<code>loadConfig()</code> lit compte, repo, branche et token dans le stockage local (<code>patrimoine:cfg</code>). Par défaut : Cokinho78 / patrimoine-data / main." },
+    { t: "Arbre du repo", ref: "js/store.js:85", p: "<code>GET /repos/…/git/trees/main?recursive=1</code>, sans cache HTTP. Donne la liste des fichiers et leur sha, sauvegardée sous <code>patrimoine:tree</code>." },
+    { t: "Contenu des fichiers", ref: "js/store.js:102-125", p: "Pour chaque <code>.json</code>, 6 lectures en parallèle : blob en cache sous <code>patrimoine:blob:&lt;sha&gt;</code>, sinon <code>GET /git/blobs/&lt;sha&gt;</code> décodé du base64 puis mis en cache. Un fichier illisible est ignoré avec un avertissement en console." },
+    { t: "Calcul des modèles", ref: "js/app.js:38-42", p: "<code>buildModel</code> (dépenses, patrimoine, Sorare), <code>buildImmo</code> (annonces notées) et <code>config/previsionnel.json</code> pour le prévisionnel. Tout tourne dans le navigateur." },
+    { t: "Voyant de synchro", ref: "js/app.js:52", p: "Le voyant de la barre latérale passe au vert, au gris ou au rouge, avec un message." },
+    { t: "Affichage", ref: "js/app.js:787", p: "<code>render()</code> choisit la vue selon le hash, dessine les courbes, active le tri des tableaux et les curseurs du simulateur immo." },
+  ];
+  const SC = {
+    token: {
+      lbl: "Sans token",
+      st: ["run", "run", "skip", "skip", "skip", "run", "run"],
+      why: { 1: "Token vide : <code>loadAll()</code> s'arrête là.", 6: "Toute route renvoie vers Réglages." },
+      dot: "", msg: "Token requis",
+      screen: `<b>Réglages</b><span>Formulaire compte / repo / branche / token, et la marche à suivre pour créer un token fine-grained en lecture seule.</span>`,
+      calls: "0 appel réseau",
+      note: "Premier lancement sur un appareil, ou après « Oublier le token ».",
+    },
+    cold: {
+      lbl: "Première synchro",
+      st: ["run", "run", "run", "run", "run", "run", "run"],
+      why: { 3: "Cache vide : tous les fichiers sont téléchargés, un appel par fichier." },
+      dot: "ok", msg: "À jour · <i>dernier mois de dépenses</i>",
+      screen: `<b>Tableau de bord</b><span>Patrimoine net, épargne, dépenses, prochaine étape immo…</span>`,
+      calls: "1 appel pour l'arbre + 1 par fichier JSON",
+      note: "Juste après avoir enregistré le token.",
+    },
+    warm: {
+      lbl: "Synchro suivante",
+      st: ["run", "run", "run", "cache", "run", "run", "run"],
+      why: { 3: "Seuls les fichiers dont le sha a changé (nouveau mois, nouvelles annonces…) sont téléchargés. Les autres sortent du cache local." },
+      dot: "ok", msg: "À jour · <i>dernier mois de dépenses</i>",
+      screen: `<b>La vue en cours</b><span>Rafraîchie avec les nouvelles données.</span>`,
+      calls: "1 appel + 1 par fichier modifié",
+      note: "Le cas courant : réouverture de l'app ou bouton « Synchroniser ».",
+    },
+    offline: {
+      lbl: "Hors réseau",
+      st: ["run", "run", "fall", "cache", "run", "run", "run"],
+      why: { 2: "L'appel échoue sans réponse de GitHub : l'app reprend le dernier arbre sauvegardé.", 3: "Tout vient du cache. Un fichier jamais téléchargé manque à l'appel, sans bloquer le reste." },
+      dot: "", msg: "Hors ligne : dernières données",
+      screen: `<b>Dernier état connu</b><span>Les chiffres de la dernière synchro réussie.</span>`,
+      calls: "1 appel en échec, aucun autre",
+      note: "Métro, avion. Sans arbre sauvegardé (jamais synchronisé), c'est une erreur « Connexion impossible ».",
+    },
+    expired: {
+      lbl: "Token expiré",
+      st: ["run", "run", "fail", "skip", "skip", "run", "run"],
+      why: { 2: "GitHub répond 401 : « Token invalide ou expiré. » Pas de repli sur le cache dans ce cas, c'est voulu.", 6: "Si des données étaient déjà chargées dans la session, elles restent affichées ; sinon un bandeau d'erreur renvoie vers Réglages." },
+      dot: "err", msg: "Erreur de synchronisation",
+      screen: `<div class="alert">Token invalide ou expiré. <u>Réglages →</u></div>`,
+      calls: "1 appel, refusé",
+      note: "Le token expire au bout d'un an. Messages voisins : 403 « Accès refusé : le token doit avoir Contents : Read-only », 404 « Repo introuvable ».",
+    },
+  };
+  const PILL = { run: "exécuté", cache: "cache", skip: "sauté", fail: "échec", fall: "repli" };
+  let scen = "warm";
+  const scenHost = document.getElementById("scen");
+  function renderSync() {
+    scenHost.innerHTML = Object.entries(SC).map(([k, s]) => `<button type="button" data-s="${k}" aria-pressed="${k === scen}">${s.lbl}</button>`).join("");
+    const s = SC[scen];
+    document.getElementById("steps").innerHTML = STEPS.map((st, i) => `
+      <li class="s-${s.st[i]}"><div class="step">
+        <div class="step-h"><h4>${st.t}</h4><span class="pill ${s.st[i]}">${PILL[s.st[i]]}</span></div>
+        <p>${st.p}</p>
+        <div class="ref">${st.ref}</div>
+        ${s.why[i] ? `<div class="why">${s.why[i]}</div>` : ""}
+      </div></li>`).join("");
+    document.getElementById("result").innerHTML = `
+      <div class="card">
+        <div class="lbl">Ce que tu vois</div>
+        <div class="sidebar-mock">
+          <div class="sync-line"><span class="dot ${s.dot}"></span><span>${s.msg}</span></div>
+          <div class="mockbtn">Synchroniser</div>
+        </div>
+        <div class="screen-mock">${s.screen}</div>
+      </div>
+      <div class="card">
+        <div class="lbl">Situation</div>
+        <h3>${s.lbl}</h3>
+        <p>${s.note}</p>
+        <dl class="kv"><dt>Réseau</dt><dd>${s.calls}</dd><dt>Écritures</dt><dd>aucune vers GitHub ; seul le stockage local du navigateur est mis à jour</dd></dl>
+      </div>
+      <div class="card">
+        <div class="lbl">En local</div>
+        <p><code>python3 dev/mock_github.py &lt;copie de patrimoine-data&gt;</code> imite les endpoints GitHub. Ouvrir <code>http://localhost:8787/?api=http://localhost:8787/api</code>, n'importe quel token passe.</p>
+      </div>`;
+  }
+  scenHost.addEventListener("click", (e) => { const b = e.target.closest("[data-s]"); if (b) { scen = b.dataset.s; renderSync(); } });
+  renderSync();
+
+  // ------------------------------------------------------------------ boucles
+  const W = [["Rendement", 3], ["Gare", 3], ["Prix", 2], ["Énergie", 2], ["Copro", 1], ["Secteur", 1], ["Trésorerie", 1]];
+  const LOOPS = [
+    { dom: "dep", rythme: "Chaque mois", t: "Dépenses et patrimoine",
+      p: "Le cycle de base : un nouveau mois arrive, les chiffres et les actions se recalculent.",
+      steps: ["<b>Nouveau relevé</b> : un fichier <code>depenses/AAAA-MM.json</code> et une ligne de soldes dans <code>historique.json</code>.",
+        "<b>Synchroniser</b> : seuls ces fichiers sont téléchargés.",
+        "<b>Tableau de bord</b> : épargne du mois au-dessus de chaque barre ; un mois sans salaire est grisé « salaire absent » et sort des moyennes.",
+        "<b>Dépenses</b> : on descend jusqu'au marchand et à la transaction, la heatmap compare chaque case au budget.",
+        "<b>Actions</b> : les règles se rejouent sur les nouveaux soldes."],
+      more: { s: "Règles des actions chiffrées", h: `<ul style="margin:0;padding-left:18px;display:grid;gap:4px">
+        <li>Livret A au plafond → nouveaux versements sur le LDDS (même taux).</li>
+        <li>Apport locatif : manque = apport cible − livrets, et nombre de mois au rythme d'épargne prévu.</li>
+        <li>PEA : ETF Banques au-dessus de la cible + 2 pts → montant à vendre, ou versements hors Banques nécessaires.</li>
+        <li>AV BNP : Disruptive Technology au-dessus de 7 % → arbitrage vers 5 %.</li>
+        <li>Catégories à plus de 130 % du budget sur 3 mois (3 au plus).</li>
+        <li>Priorités hautes du plan pas encore faites.</li></ul>` } },
+    { dom: "immo", rythme: "Lundi et jeudi, 8 h", t: "Projet locatif",
+      p: "De l'annonce à l'offre. Chaque chiffre affiche sa source ; rien n'est inventé.",
+      steps: ["<b>Veille</b> : la tâche planifiée collecte Bien'ici et les alertes e-mail, écarte DPE interdits, viager et résidences gérées.",
+        "<b>Analyse</b> : simulation LMNP réel avec loyer ANIL, prix DVF, charges, gare à pied ; note sur 20 et verdict.",
+        "<b>Cockpit</b> : prochaine étape du projet, meilleures annonces, contacts à relancer, point hebdo du lundi (3 actions).",
+        "<b>Fiche du bien</b> : simulateur (prix négocié, loyer, travaux, taux, apport, durée) pour trouver le prix qui tient la cible.",
+        "<b>/immo</b> : tu fais avancer le statut et ajoutes les hypothèses vérifiées en visite, qui remplacent celles de l'annonce."],
+      more: { s: "Note /20, statuts et verdicts", h: `
+        <div class="weights">${W.map(([k, w]) => `<div class="wrow"><span>${k}</span><span class="wbar"><i style="width:${(w / 3) * 100}%"></i></span><span class="mono">×${w}</span></div>`).join("")}</div>
+        <p style="margin:0">Gare ou DPE inconnus comptent 8/20 par prudence. Une annonce exclue plafonne à 5.</p>
+        <div class="flowline"><span>Nouveau</span><em>→</em><span>À visiter</span><em>→</em><span>Visité</span><em>→</em><span>Offre</span><em>ou</em><span>Écarté</span></div>
+        <div class="verdicts">
+          <div><b>À écarter</b><span>DPE exclu par les critères, produit géré, surface sous le minimum, copro en procédure</span></div>
+          <div><b>Visiter et négocier</b><span>hors budget, gare au-delà du seuil, ou rendement entre le minimum et la cible</span></div>
+          <div><b>À visiter</b><span>rendement brut ≥ cible</span></div>
+          <div><b>Trop cher</b><span>sous le rendement minimum : prix à atteindre indiqué</span></div>
+        </div>` } },
+    { dom: "prev", rythme: "Quand une hypothèse change", t: "Prévisionnel",
+      p: "Le compte courant BNP projeté mois par mois, puis le patrimoine sur 10 ans.",
+      steps: ["<b>Départ</b> : solde réel du compte BNP au dernier relevé de patrimoine.",
+        "<b>Chaque mois</b> : salaire − loyer − dépenses (Budget ou rythme réel des 12 derniers mois) − voyages − versements − événements − envies datées.",
+        "<b>Plancher</b> : 500 € par défaut ; la marge d'ici la prochaine prime dit si une envie passe sans toucher au LDDS.",
+        "<b>Envies</b> : celles sans date sont calées sur le premier mois qui les absorbe.",
+        "<b>Long terme</b> : 10 ans en prudent, central et dynamique, avec ou sans achat immo."],
+      more: { s: "Bascules disponibles", h: `<div class="flowline"><span>Budget</span><em>/</em><span>Rythme réel</span></div>
+        <div class="flowline"><span>Versements actuels</span><em>/</em><span>scénarios de previsionnel.json</span></div>
+        <div class="flowline"><span>Avec immo</span><em>/</em><span>Sans immo</span></div>
+        <p style="margin:0">Épargne de précaution visée : 3 mois de dépenses courantes + loyer.</p>` } },
+    { dom: "sor", rythme: "À chaque valorisation", t: "Loisir – Sorare",
+      p: "Un investissement loisir suivi à part, jamais compté dans le patrimoine financier.",
+      steps: ["<b>sorare_valo.py</b> : prix des cartes (API Sorare) et cours ETH (CoinGecko).",
+        "<b>Valeur prudente</b> par carte : le minimum entre la médiane des 5 dernières ventes et l'offre la moins chère.",
+        "<b>Écran</b> : valeur, mise, effet ETH et effet cartes ; dernière vente de plus de 90 jours en orange (carte difficile à revendre).",
+        "<b>/sorare decision</b> : aide à la décision et plan de vente. La décision reste la tienne."],
+      more: null },
+  ];
+  document.getElementById("loops").innerHTML = LOOPS.map((l) => `
+    <article class="loop" style="--c:${DOM[l.dom].c}">
+      <div class="loop-h"><h3>${l.t}</h3><span class="lbl">${l.rythme}</span></div>
+      <p>${l.p}</p>
+      <ol class="chain">${l.steps.map((s) => `<li><span>${s}</span></li>`).join("")}</ol>
+      ${l.more ? `<details class="more"><summary>${l.more.s}</summary><div class="inner">${l.more.h}</div></details>` : ""}
+    </article>`).join("");
+
+  // ------------------------------------------------------------------ historique
+  const C = [
+    ["2026-10-27", "c3688f8", "prev", "Prévisionnel : trésorerie BNP mois par mois, envies, patrimoine 15 mois et long terme"],
+    ["2026-10-27", "360f10a", "immo", "Immo : onglet Contacts (suivi des agences et relances) + encart cockpit"],
+    ["2026-10-21", "33c83f9", "sor", "Loisir – Sorare : panneau Plan de vente"],
+    ["2026-10-21", "d33bf29", "sor", "Loisir – Sorare : panneau Aide à la décision lu depuis sorare/decision.json"],
+    ["2026-10-21", "7168c92", "sor", "Patrimoine : sous-onglet Loisir – Sorare (hors total), lu depuis sorare/valo.json"],
+    ["2026-10-21", "437c56b", "pat", "Patrimoine : enveloppe Épargne salariale et sous-onglet dédié"],
+    ["2026-10-21", "282bbe3", "immo", "Immo : accès gare (temps à pied vers la gare RER / Transilien la plus proche) dans la note, le verdict, le tableau et la fiche"],
+    ["2026-10-20", "e348a45", "pat", "Assurance-vie valorisée au jour (parts × VL), patrimoine estimé PEA + AV, supports sans cotation signalés"],
+    ["2026-10-20", "cefa9bd", "pat", "PEA valorisé au cours du jour : patrimoine estimé, courbe quotidienne, plus-values latentes par ligne"],
+    ["2026-10-20", "dadb0a6", "immo", "Veille : statut « À finaliser » pour les alertes"],
+    ["2026-10-20", "24a0fd9", "sys", "Tri par clic sur les en-têtes et filtres de colonnes ; notes des annonces en colonnes"],
+    ["2026-10-20", "c5b5493", "immo", "Onglet Immo : cockpit, annonces notées, fiche avec simulateur LMNP, marché (DVF, ANIL) et veille"],
+    ["2026-10-19", "ac079b5", "sys", "Afficher « Token requis » au lieu de « Chargement… » sans token"],
+    ["2026-10-19", "dc30d01", "dep", "Patrimoine Desk v1 : tableau de bord, patrimoine, dépenses (mois › catégorie › marchand › transaction), actions"],
+  ];
+  let hdom = null;
+  const fmtDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+  function renderHist() {
+    const rows = C.filter((c) => !hdom || c[2] === hdom);
+    const days = [...new Set(rows.map((c) => c[0]))];
+    document.getElementById("timeline").innerHTML = days.length ? days.map((d) => {
+      const r = rows.filter((c) => c[0] === d);
+      return `<div class="day"><h3>${d.slice(8)} oct.<small>${fmtDay(d)} · ${r.length} commit${r.length > 1 ? "s" : ""}</small></h3>
+        <div class="commits">${r.map(([, h, k, m]) => `<div class="commit" style="--c:${DOM[k].c}"><code>${h}</code><span class="tag">${DOM[k].nom}</span><p>${esc(m)}</p></div>`).join("")}</div></div>`;
+    }).join("") : `<p class="muted">Aucun commit pour ce domaine.</p>`;
+  }
+  domainChips(document.getElementById("hdomains"), () => hdom, (d) => { hdom = d; renderHist(); });
+  renderHist();
+
+  // ------------------------------------------------------------------ onglets
+  const VIEWS = ["flux", "synchro", "boucles", "historique"];
+  function route() {
+    const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "flux";
+    VIEWS.forEach((k) => { document.getElementById(`v-${k}`).hidden = k !== v; });
+    document.querySelectorAll("nav.tabs a").forEach((a) => { if (a.dataset.view === v) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+    if (v === "flux") requestAnimationFrame(drawEdges);
+  }
+  addEventListener("hashchange", route);
+  let rz;
+  addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(drawEdges, 100); });
+  if (document.fonts?.ready) document.fonts.ready.then(drawEdges);
+  route();
+})();
+</script>
+</body>
+</html>
