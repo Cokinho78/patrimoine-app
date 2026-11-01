@@ -249,6 +249,10 @@ export function analyse(I, a, over = {}) {
   const mot = crit.mots_exclus.find((x) => txt.includes(x));
   const dpe = /^[A-G]$/.test(a.dpe || "") ? a.dpe : null;
   const proc = typeof a.procedure_copro === "string" ? !/pas de proc/i.test(a.procedure_copro) : a.procedure_copro === true;
+  // Recouvrement d'impayés contre des copropriétaires : courant, simple alerte. Toute autre procédure, ou non précisée : écarté.
+  const procSuivi = I.suivi[a.id]?.hypotheses?.procedure_copro;
+  const procTxt = `${procSuivi?.v ?? ""} ${typeof a.procedure_copro === "string" ? a.procedure_copro : ""}`;
+  const recouvrement = proc && /recouvrement|débiteur|impayé/i.test(procTxt);
   const coproM2 = a.charges_copro_an && a.surface ? a.charges_copro_an / a.surface : null;
   const gare = accesGare(I, a);
   const gIdeal = crit.gare_ideal_min ?? 8;
@@ -259,13 +263,14 @@ export function analyse(I, a, over = {}) {
   if (dpe && crit.dpe_exclus.includes(dpe)) exclus.push(`DPE ${dpe} : ${dpe === "G" ? "interdit à la location depuis 2025" : "interdit à la location en 2028"}`);
   if (a.residence_senior || mot) exclus.push(`Produit géré / atypique${mot ? ` (« ${mot} »)` : ""} : pas un appartement à louer librement`);
   if (a.surface && a.surface < crit.surface_min) exclus.push(`Surface ${a.surface} m² < ${crit.surface_min} m²`);
-  if (proc) exclus.push("Copropriété en procédure");
+  if (proc && !recouvrement) exclus.push(`Copropriété en procédure${procSuivi ? ` (${procSuivi.v})` : " : nature à faire préciser"}`);
 
   const alertes = [];
   if (!sim.budgetOk) alertes.push(`Budget dépassé : ${eur0(sim.cout)} tout compris. Prix plafond pour tenir ${eur0(crit.budget_total_max)} : ${eur0(sim.prixMaxBudget)}`);
   if (!dpe) alertes.push("DPE non communiqué : à exiger avant la visite");
   if (dpe === "E") alertes.push("DPE E : location interdite à partir de 2034 ; prévoir des travaux");
   if (m2 && p75 && m2 > p75) alertes.push(`Prix au m² au-dessus de 75 % des ventes récentes de la commune (${Math.round(p75).toLocaleString("fr-FR")} €/m²)`);
+  if (recouvrement) alertes.push("Procédure de recouvrement contre des copropriétaires débiteurs : demander le montant des impayés et leur poids dans le budget de la copro");
   if (!a.charges_copro_an) alertes.push("Charges de copropriété inconnues");
   if (!gare) alertes.push("Distance à la gare inconnue : demander l'adresse avant la visite");
   else if (loin) alertes.push(`Gare à ~${Math.round(gare.min)} min à pied${gare.nom ? ` (${gare.nom})` : ""} : au-delà de ${gMax} min, moins demandé`);
@@ -286,7 +291,7 @@ export function analyse(I, a, over = {}) {
     Gare: gare ? clamp(lerp(-gare.min, -20.8, -5)) : null,
     Prix: m2 && med ? clamp(lerp(-(m2 / med), -1.3, -0.75)) : null,
     Énergie: dpe ? DPE_NOTE[dpe] : null,
-    Copro: proc ? 1 : coproM2 == null ? null : clamp(lerp(-coproM2, -60, -15)),
+    Copro: proc && !recouvrement ? 1 : coproM2 == null ? null : clamp(lerp(-coproM2, -60, -15)),
     Secteur: { coeur: 18, voisine: 15, secondaire: 11 }[I.rang(a.insee)] || 6,
     Trésorerie: clamp(lerp(sim.cfApres, -450, 50)),
   };
