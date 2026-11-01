@@ -541,7 +541,8 @@ th.sort-h[aria-sort="ascending"], th.sort-h[aria-sort="descending"] { color: var
 .contacts td .flag { margin: 0; }
 
 /* Prévisionnel */
-.pv-tg { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.pv-tg { display: flex; flex-wrap: wrap; gap: 8px 14px; justify-content: flex-end; }
+.pv-l { display: inline-flex; align-items: center; gap: 8px; }
 .screen-h + .subtabs, .subtabs + .pv-tg { margin-top: 0; }
 .row-r { display: flex; justify-content: flex-end; }
 .pv-t th small, .matrix th small { display: block; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }

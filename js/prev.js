@@ -15,14 +15,24 @@ const statutTag = (s) => (s ? `<span class="tag st-${{ "estimé": "est", "à dé
 export function viewPrev(ctx, sub, arg) {
   const { M, I, P, st } = ctx;
   if (!P) return `${head([], "Prévisionnel")}<p class="empty">Fichier config/previsionnel.json absent du repo de données.</p>`;
-  const pv = buildPrev(M, I, P, st);
-  if (!pv) return `${head([], "Prévisionnel")}<p class="empty">Pas encore de relevé de patrimoine : point de départ inconnu.</p>`;
-  const c = { ...ctx, pv, mg: marges(M, I, P, st), env: calerEnvies(M, I, P, st) };
+  const run = prevRun(M, I, P, st);
+  if (!run) return `${head([], "Prévisionnel")}<p class="empty">Pas encore de relevé de patrimoine : point de départ inconnu.</p>`;
+  const c = { ...ctx, ...run };
   if (sub === "mois") return viewMoisPrev(c, arg);
   if (sub === "envies") return viewEnvies(c);
   if (sub === "patrimoine") return viewPatriPrev(c);
   if (sub === "long-terme") return viewLongTerme(c);
   return viewTreso(c);
+}
+
+// Les envies non datées sont placées au premier mois possible et entrent dans les flux.
+function prevRun(M, I, P, st) {
+  const env = calerEnvies(M, I, P, st);
+  const extra = new Map();
+  for (const e of env) if (e.suggestion) extra.set(e.suggestion, [...(extra.get(e.suggestion) || []), { ...e, auto: true }]);
+  const opts = { ...st, extra };
+  const pv = buildPrev(M, I, P, opts);
+  return pv ? { pv, env, mg: marges(M, I, P, opts), horsHorizon: env.filter((e) => !e.suggestion) } : null;
 }
 
 const prevTabs = (active) => tabs([["", "Trésorerie", "#/previsionnel"], ["envies", "Envies", "#/previsionnel/envies"],
@@ -31,12 +41,12 @@ const prevTabs = (active) => tabs([["", "Trésorerie", "#/previsionnel"], ["envi
 const seg = (st, key, items) => `<div class="seg">${items.map(([v, l]) =>
   `<button type="button" data-pv="${key}:${v}" aria-pressed="${String(st[key]) === v}">${l}</button>`).join("")}</div>`;
 const toggles = (st, P) => `<div class="pv-tg">
-  ${seg(st, "dep", [["budget", "Budget"], ["reel", "Rythme réel"]])}
-  ${seg(st, "vers", Object.entries(P.versements || {}).map(([k, s]) => [k, k === "actuel" ? "Versements actuels" : `Versements · ${s.nom}`]))}
+  <span class="pv-l"><span class="lbl">Dépenses</span>${seg(st, "dep", [["budget", "Budget"], ["reel", "Rythme réel"]])}</span>
+  <span class="pv-l"><span class="lbl">Prime &amp; versements</span>${seg(st, "vers", Object.entries(P.versements || {}).map(([k, s]) => [k, s.nom]))}</span>
 </div>`;
 
 const head2 = (c, crumbs, title, extra = "") => head(crumbs, title, {
-  sub: `Compte courant BNP · départ fin ${mLong(c.pv.depart.mois)} (réel) : ${eur(c.pv.depart.soldes.cc_bnp || 0)} · plancher ${eur(c.pv.plancher)}${extra}`,
+  sub: `Compte courant BNP · départ fin ${mLong(c.pv.depart.mois)} (réel) : ${eur(c.pv.depart.soldes.cc_bnp || 0)} · plancher ${eur(c.pv.plancher)}${c.pv.plafond != null ? ` · plafond ${eur(c.pv.plafond)}` : ""}${extra}`,
   right: toggles(c.st, c.P),
 });
 
@@ -64,9 +74,10 @@ function viewTreso(c) {
     ["− Loyer", (r) => r.loyer, ""],
     ["− Dépenses courantes", (r) => r.courant, ""],
     ["− Voyages", (r) => r.voyages.prevu, ""],
-    ["− Envies datées", (r) => r.enviesTot, ""],
+    ["− Envies", (r) => r.enviesTot, ""],
     ["− Épargne programmée", (r) => r.versTot, ""],
     ["+ Virement LDDS → BNP", (r) => r.pont, "warn"],
+    ["− Excédent → LDDS", (r) => r.balayage, "up"],
   ];
   const table = `<div class="scroll-x"><table class="grid-t matrix pv-t">
     <thead><tr><th></th><th class="r muted">${mYear(pv.depart.mois)}<small>réel</small></th>${pv.mois.map((r) =>
@@ -107,8 +118,8 @@ function viewTreso(c) {
     ${panel("Règles de calcul", `<div class="callout">
       <p><b>Dépenses :</b> chaque catégorie vaut ${pv.dep === "reel" ? "sa moyenne des 12 derniers mois" : "sa cible du budget v2"}. Un événement daté absorbe le budget de sa catégorie (on retient le plus élevé des deux).</p>
       <p><b>Voyages :</b> enveloppe de ${eur(va.enveloppe)} par an. Ce qui reste après le réel et les voyages datés est réparti sur les mois restants de l'année.</p>
-      <p><b>Envies :</b> une envie datée s'ajoute au budget de sa catégorie. Les autres sont calées dans l'onglet Envies.</p>
-      <p><b>Plancher :</b> sous ${eur(pv.plancher)}, un virement LDDS → BNP est prévu (arrondi à la centaine).</p>
+      <p><b>Envies :</b> elles s'ajoutent au budget de leur catégorie. Une envie sans mois est placée au premier mois possible (onglet Envies)${c.horsHorizon.length ? ` ; ${c.horsHorizon.length} n'ont pas de place sur l'horizon et ne sont pas comptées` : ""}.</p>
+      <p><b>Plancher et plafond :</b> sous ${eur(pv.plancher)}, un virement LDDS → BNP est prévu ; au-dessus de ${pv.plafond != null ? eur(pv.plafond) : "—"}, l'excédent part sur le LDDS (à la centaine).</p>
       <p><b>Marge :</b> ce qui peut encore sortir ce mois-ci sans passer sous le plancher d'ici la prochaine prime, sans toucher au LDDS.</p>
     </div><p class="note">MAJ ${esc(P.maj || "")} · ${esc(P.plancher_note || "")}</p>`)}
   </div>`;
@@ -132,10 +143,11 @@ function viewMoisPrev(c, m) {
     ["Salaire net", r.salaire, true],
     ...r.exc.map((x) => [`${x.libelle} ${statutTag(x.statut)}`, x.montant, true]),
     ...(r.pont ? [["Virement LDDS → BNP (plancher)", r.pont, true]] : []),
+    ...(r.balayage ? [["Excédent → LDDS (plafond)", r.balayage, false]] : []),
     ["Loyer", r.loyer, false],
     ["Dépenses courantes", r.courant, false],
     ["Voyages", r.voyages.prevu, false],
-    ...(r.enviesTot ? [["Envies datées", r.enviesTot, false]] : []),
+    ...(r.enviesTot ? [["Envies", r.enviesTot, false]] : []),
     ["Épargne programmée", r.versTot, false],
   ].filter(([, v]) => v);
 
@@ -152,14 +164,14 @@ function viewMoisPrev(c, m) {
         voy.reparti ? "reste de l'enveloppe annuelle réparti" : "enveloppe de l'année consommée"].join(" · ")}</td></tr>`;
   const envRows = r.envies.map((e) => `<tr>
       <td><span class="tname"><i class="sw" style="background:${catColor(e.cat)}"></i>${esc(e.nom)}</span></td>
-      <td class="r num muted">·</td><td class="r num"><b>${eur(e.prix)}</b></td><td class="xs">envie datée, en plus du budget</td></tr>`).join("");
+      <td class="r num muted">·</td><td class="r num"><b>${eur(e.prix)}</b></td><td class="xs">${e.auto ? "envie placée au premier mois possible" : "envie datée"}, en plus du budget</td></tr>`).join("");
 
   return `
   ${head2(c, [["Prévisionnel", "#/previsionnel"], [mLong(m)]], `${mLong(m)}${r.enCours ? " · en cours" : ""}`)}
   <div class="row-r">${nav}</div>
   <div class="grid g-4">
     ${kpi("Solde début", eur(r.debut), i ? `Fin ${mLong(pv.mois[i - 1].m)} prévue` : `Réel fin ${mLong(pv.depart.mois)}`)}
-    ${kpi("Solde fin prévu", eur(r.fin), r.pont ? `<span class="warn">dont ${eur(r.pont)} venus du LDDS</span>` : `Plancher ${eur(pv.plancher)}`, r.alerte ? "k-bad" : "k-ok")}
+    ${kpi("Solde fin prévu", eur(r.fin), r.pont ? `<span class="warn">dont ${eur(r.pont)} venus du LDDS</span>` : r.balayage ? `<span class="up">après ${eur(r.balayage)} envoyés sur le LDDS</span>` : `Plancher ${eur(pv.plancher)}`, r.alerte ? "k-bad" : "k-ok")}
     ${kpi("Marge du mois", eur(marge), marge >= 0 ? "Peut encore sortir sans passer sous le plancher d'ici la prochaine prime" : "Déjà sous le plancher : chaque euro dépensé vient du LDDS", marge >= 0 ? "k-ok" : "k-bad")}
     ${kpi("Épargne programmée", eur(r.versTot), `${r.vers.length} versement${r.vers.length > 1 ? "s" : ""} · ${esc(pv.scen.nom || "")}`)}
   </div>
@@ -177,7 +189,7 @@ function viewMoisPrev(c, m) {
     ${panel("Épargne programmée", r.vers.length ? `<div class="tlist">${r.vers.map((l) => `
       <div class="trow"><span class="tname">${esc(l.libelle)}<small>${esc(M.comptes[l.compte]?.nom || l.compte)}${l.note ? ` · ${esc(l.note)}` : ""}</small></span><span class="num"><b>${eur(l.montant)}</b></span></div>`).join("")}</div>`
       : `<p class="empty">Aucun versement ce mois-ci.</p>`, { right: `<a href="#/previsionnel/patrimoine">Patrimoine projeté →</a>` })}
-    ${panel("Envies qui passent ce mois-ci", possibles.length ? `<div class="tlist">${possibles.map((e) => `
+    ${panel("Envies placées ce mois-ci", possibles.length ? `<div class="tlist">${possibles.map((e) => `
       <div class="trow"><span class="tname"><i class="sw" style="background:${catColor(e.cat)}"></i>${esc(e.nom)}<small>${esc(e.detail || "")}</small></span><span class="num"><b>${eur(e.prix)}</b></span></div>`).join("")}</div>`
       : `<p class="empty">Aucune envie calée sur ce mois.</p>`, { right: `<a href="#/previsionnel/envies">Toutes les envies →</a>` })}
   </div>`;
@@ -245,7 +257,7 @@ function viewPatriPrev(c) {
     ${kpi(`Fin ${mLong(end.m)}`, eur(end.total), `${signed(delta)} vs fin ${mLong(d.mois)} (${pct(delta / d.total, 1)})`, "k-ok")}
     ${kpi("Épargne nette", signed(epargneNette), "Revenus − loyer − dépenses − voyages − envies")}
     ${kpi("Effet rendement", signed(delta - epargneNette), `UC ${pct(R.uc?.central ?? 0.05, 1)}/an · épargne salariale ${pct(R.salariale?.central ?? 0.04, 1)}/an · livrets à leur taux`)}
-    ${kpi("Prise sur le LDDS", eur(pv.pontTotal), pv.pontTotal ? "Virements pour tenir le plancher BNP" : "Aucune", pv.pontTotal ? "k-bad" : "")}
+    ${kpi("Échanges avec le LDDS", signed(pv.balayageTotal - pv.pontTotal), `${eur(pv.balayageTotal)} d'excédents envoyés · ${eur(pv.pontTotal)} repris pour tenir le plancher`)}
   </div>
   ${panel("Patrimoine total en fin de mois", line(pts, { height: 220 }), { right: `<span class="muted xs">${esc(pv.scen.nom || "")} · hors Loisir – Sorare</span>` })}
   ${panel("Compte par compte", `<div class="scroll-x"><table class="grid-t matrix">
@@ -311,10 +323,9 @@ function viewLongTerme(c) {
 export function prevAccueil(ctx) {
   const { M, I, P, st } = ctx;
   if (!P) return "";
-  const pv = buildPrev(M, I, P, st);
-  if (!pv?.mois.length) return "";
-  const mg = marges(M, I, P, st);
-  const env = calerEnvies(M, I, P, st);
+  const run = prevRun(M, I, P, st);
+  if (!run?.pv.mois.length) return "";
+  const { pv, mg, env } = run;
   const [r0, r1] = pv.mois;
   const prochaine = env.filter((e) => e.suggestion).sort((a, b) => a.suggestion.localeCompare(b.suggestion) || (a.priorite ?? 9) - (b.priorite ?? 9))[0];
   return `<div class="grid g-4">

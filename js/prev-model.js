@@ -22,6 +22,9 @@ function versementDu(l, m) {
   return l.mois === m;
 }
 
+// Échéancier {depuis, montant} : dernière valeur en vigueur au mois m, sinon le défaut.
+const enVigueur = (list, m, defaut) => (list || []).filter((x) => x.depuis <= m).sort((a, b) => a.depuis.localeCompare(b.depuis)).at(-1)?.montant ?? defaut;
+
 // Dépense de référence d'une catégorie (hors Voyages et Exceptionnel) selon le scénario.
 function baseCats(M, dep) {
   const cats = ALL_CATS.filter((c) => c !== VOYAGES && c !== EXCEPTIONNEL);
@@ -31,17 +34,16 @@ function baseCats(M, dep) {
     : M.budgetCat(c) || 0]).filter(([, v]) => v > 0));
 }
 
-// opts : { dep: "budget"|"reel", vers: "actuel"|"propose", pont: bool, extra: Map(mois → [envies]) }
+// opts : { dep: "budget"|"reel", vers: "actuel"|"propose", pont: bool, balayage: bool, extra: Map(mois → [envies]) }
 export function buildPrev(M, I, P, opts = {}) {
   if (!P || !M.patriLast) return null;
   const dep = opts.dep || "budget";
   const scen = P.versements?.[opts.vers] || P.versements?.actuel || { lignes: [] };
   const plancher = P.plancher_bnp ?? 500;
+  const plafond = opts.balayage === false ? null : P.plafond_bnp ?? null;
   const depart = M.patriLast;
   const mois = monthRange(addMonths(depart.mois, 1), P.horizon_fin || addMonths(depart.mois, 15));
   const base = baseCats(M, dep);
-  const salaire = M.budget.salaire_net || 0;
-  const loyer = M.budget.loyer || 0;
   const taux = Object.fromEntries(Object.entries(M.comptes).map(([k, c]) => [k, c.taux || 0]));
   const rUC = P.rendements?.uc?.central ?? 0.05;
   const rES = P.rendements?.salariale?.central ?? 0.04;
@@ -64,6 +66,8 @@ export function buildPrev(M, I, P, opts = {}) {
   const rows = [];
   for (const m of mois) {
     const debut = bnp;
+    const salaire = enVigueur(P.salaires, m, M.budget.salaire_net || 0);
+    const loyer = enVigueur(P.loyers, m, M.budget.loyer || 0);
     const exc = (P.revenus_exceptionnels || []).filter((r) => r.mois === m);
     const revenus = salaire + sum(exc, (r) => r.montant);
     const evts = (P.evenements || []).filter((e) => e.mois === m);
@@ -100,18 +104,25 @@ export function buildPrev(M, I, P, opts = {}) {
     if (opts.pont !== false && avant < plancher) pont = Math.min(ceil100(plancher - avant), Math.max(0, Math.floor(soldes.ldds || 0)));
     soldes.ldds = (soldes.ldds || 0) - pont;
     bnp = avant + pont;
+    // Au-dessus du plafond : l'excédent part sur le LDDS (à la centaine, dans la limite de son plafond).
+    let balayage = 0;
+    if (plafond != null && bnp > plafond) {
+      balayage = Math.min(Math.floor((bnp - plafond) / 100) * 100, Math.max(0, (M.comptes.ldds?.plafond ?? Infinity) - soldes.ldds));
+      soldes.ldds += balayage;
+      bnp -= balayage;
+    }
     soldes.cc_bnp = bnp;
     rows.push({
       m, enCours: m <= nowMonth(), debut, salaire, exc, revenus, loyer, cats, courant, voyages, envies, enviesTot,
-      vers, versTot, avant, pont, fin: bnp, alerte: bnp < plancher, soldes: { ...soldes },
+      vers, versTot, avant, pont, balayage, fin: bnp, alerte: bnp < plancher, soldes: { ...soldes },
       total: sum(Object.values(soldes)),
     });
   }
 
   const pointBas = rows.reduce((a, r) => (r.avant < a.avant ? r : a), rows[0]);
   return {
-    depart, plancher, mois: rows, voyAn, base, dep, vers: opts.vers || "actuel", scen,
-    pontTotal: sum(rows, (r) => r.pont), pointBas,
+    depart, plancher, plafond, mois: rows, voyAn, base, dep, vers: opts.vers || "actuel", scen,
+    pontTotal: sum(rows, (r) => r.pont), balayageTotal: sum(rows, (r) => r.balayage), pointBas,
     alertes: rows.filter((r) => r.alerte),
     row: (m) => rows.find((r) => r.m === m),
   };
@@ -129,7 +140,7 @@ function margeDe(rows, k, primes, plancher, pris) {
 }
 
 export function marges(M, I, P, opts) {
-  const sansPont = buildPrev(M, I, P, { ...opts, pont: false });
+  const sansPont = buildPrev(M, I, P, { ...opts, pont: false, balayage: false });
   if (!sansPont) return new Map();
   const primes = new Set((P.revenus_exceptionnels || []).map((r) => r.mois));
   return new Map(sansPont.mois.map((r, k) => [r.m, margeDe(sansPont.mois, k, primes, sansPont.plancher)]));
@@ -138,7 +149,7 @@ export function marges(M, I, P, opts) {
 // Envies non datées : premier mois dont la marge couvre le prix.
 // Ordre : priorité puis ordre de la liste ; chaque envie calée pèse sur les suivantes.
 export function calerEnvies(M, I, P, opts) {
-  const sansPont = buildPrev(M, I, P, { ...opts, pont: false });
+  const sansPont = buildPrev(M, I, P, { ...opts, pont: false, balayage: false });
   if (!sansPont) return [];
   const rows = sansPont.mois;
   const primes = new Set((P.revenus_exceptionnels || []).map((r) => r.mois));
@@ -174,7 +185,7 @@ export function longTerme(prev, M, I, P, { ans = 10, immo = false } = {}) {
   const anRows = prev.mois.filter((r) => r.m.startsWith(String(y0)));
   const flux = {};
   for (const r of anRows) for (const l of r.vers) flux[l.compte] = (flux[l.compte] || 0) + l.montant;
-  const ccDelta = last.fin - (anRows[0]?.debut ?? last.fin) - sum(anRows, (r) => r.pont);
+  const ccDelta = last.fin - (anRows[0]?.debut ?? last.fin) - sum(anRows, (r) => r.pont - r.balayage);
   const taux = Object.fromEntries(Object.entries(M.comptes).map(([k, c]) => [k, c.taux || 0]));
   const F = I?.cfg?.financement || {};
   const E = I?.cfg?.exploitation || {};
@@ -186,7 +197,7 @@ export function longTerme(prev, M, I, P, { ans = 10, immo = false } = {}) {
   const effortAn = loyerAn * (1 - (Z.charges_pct_loyer ?? 0.25)) - mens * 12;
 
   // Épargne de précaution : 3 mois de dépenses courantes + loyer.
-  const precaution = 3 * (sum(Object.values(prev.base)) + (M.budget.loyer || 0));
+  const precaution = 3 * (sum(Object.values(prev.base)) + last.loyer);
   const out = {};
   for (const sc of ["prudent", "central", "dynamique"]) {
     const rUC = P.rendements?.uc?.[sc] ?? 0.05;
@@ -215,7 +226,7 @@ export function longTerme(prev, M, I, P, { ans = 10, immo = false } = {}) {
         net += effortAn;
       }
       // Excédent → compte courant ; déficit → compte courant au-dessus du plancher, puis livrets.
-      if (net >= 0) s.cc_bnp += net;
+      if (net >= 0) s[prev.plafond != null ? "ldds" : "cc_bnp"] += net;
       else {
         const cc = Math.min(-net, Math.max(0, s.cc_bnp - prev.plancher));
         s.cc_bnp -= cc;
