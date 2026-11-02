@@ -102,8 +102,8 @@ function viewTreso(c) {
     ${kpi(`Fin ${mLong(r0.m)}${r0.enCours ? " · en cours" : ""}`, eur(r0.fin), `${margeTxt(c.mg.get(r0.m))}<a href="#/previsionnel/mois/${r0.m}">Détail du mois →</a>`, r0.alerte ? "k-bad" : "k-ok")}
     ${r1 ? kpi(`Fin ${mLong(r1.m)}`, eur(r1.fin), `${margeTxt(c.mg.get(r1.m))}<a href="#/previsionnel/mois/${r1.m}">Détail du mois →</a>`, r1.alerte ? "k-bad" : "k-ok") : ""}
     ${kpi("Point bas · avant virement", eur(bas.avant), `${mLong(bas.m)}${pv.pontTotal ? `<span class="warn">${eur(pv.pontTotal)} à prendre sur le LDDS sur la période</span>` : `<span class="up">Jamais sous le plancher</span>`}`, pv.pontTotal ? "k-bad" : "")}
-    ${kpi(`Voyages ${y}`, va.depasse ? `+${eur(va.depasse)}` : eur(va.reste),
-      `${va.depasse ? `<span class="down">Enveloppe ${eur(va.enveloppe)} dépassée</span>réel ${eur(va.reel)} + daté ${eur(va.dates)}` : `non datés, ${eur(va.parMois)}/mois`}${vb ? `<span>${+y + 1} : ${eur(vb.reste)} non datés → ${eur(vb.parMois)}/mois</span>` : ""}`, va.depasse ? "k-bad" : "")}
+    ${kpi(`Voyages ${y}`, va.depasse ? `+${eur(va.depasse)}` : eur(va.lisse ? va.reste : va.sous),
+      `${va.depasse ? `<span class="down">Enveloppe ${eur(va.enveloppe)} dépassée</span>réel ${eur(va.reel)} + daté ${eur(va.dates)}` : va.lisse ? `non datés, ${eur(va.parMois)}/mois` : `sous l'enveloppe de ${eur(va.enveloppe)}`}${vb ? (vb.lisse ? `<span>${+y + 1} : ${eur(vb.reste)} non datés → ${eur(vb.parMois)}/mois</span>` : `<span>${+y + 1} : ${eur(vb.dates)} datés, ${vb.depasse ? `${eur(vb.depasse)} au-dessus` : `${eur(vb.sous)} sous`} l'enveloppe</span>`) : ""}`, va.depasse ? "k-bad" : "")}
   </div>
   ${panel("Solde BNP en fin de mois", line(pts, { height: 240, ref: { v: pv.plancher, label: `Plancher ${eur(pv.plancher)}` } }),
     { right: `<span class="muted xs">${pv.dep === "reel" ? "Dépenses au rythme des 12 derniers mois" : "Dépenses au budget v2"} · ${esc(pv.scen.nom || "")}</span>` })}
@@ -117,7 +117,7 @@ function viewTreso(c) {
       </a>`).join("")}</div>` : `<p class="empty">Rien de daté.</p>`)}
     ${panel("Règles de calcul", `<div class="callout">
       <p><b>Dépenses :</b> chaque catégorie vaut ${pv.dep === "reel" ? "sa moyenne des 12 derniers mois" : "sa cible du budget v2"}. Un événement daté absorbe le budget de sa catégorie (on retient le plus élevé des deux).</p>
-      <p><b>Voyages :</b> enveloppe de ${eur(va.enveloppe)} par an. Ce qui reste après le réel et les voyages datés est réparti sur les mois restants de l'année.</p>
+      <p><b>Voyages :</b> ${va.lisse ? `enveloppe de ${eur(va.enveloppe)} par an. Ce qui reste après le réel et les voyages datés est réparti sur les mois restants de l'année.` : `seuls les voyages datés sont comptés, au mois prévu. L'enveloppe de ${eur(va.enveloppe)} par an sert de repère.`}</p>
       <p><b>Envies :</b> elles s'ajoutent au budget de leur catégorie. Une envie sans mois est placée au premier mois possible (onglet Envies)${c.horsHorizon.length ? ` ; ${c.horsHorizon.length} n'ont pas de place sur l'horizon et ne sont pas comptées` : ""}.</p>
       <p><b>Plancher et plafond :</b> sous ${eur(pv.plancher)}, un virement LDDS → BNP est prévu ; au-dessus de ${pv.plafond != null ? eur(pv.plafond) : "—"}, l'excédent part sur le LDDS (à la centaine).</p>
       <p><b>Marge :</b> ce qui peut encore sortir ce mois-ci sans passer sous le plancher d'ici la prochaine prime, sans toucher au LDDS.</p>
@@ -161,7 +161,7 @@ function viewMoisPrev(c, m) {
       <td><a class="tname" href="#/depenses/cat/${slugOf(VOYAGES)}"><i class="sw" style="background:${catColor(VOYAGES)}"></i>${catIcon(VOYAGES)} Voyages</a></td>
       <td class="r num muted">${eur(voy.reparti)}</td><td class="r num"><b>${eur(voy.prevu)}</b></td>
       <td class="xs">${[...voy.evts.map((e) => `${esc(e.libelle)} ${statutTag(e.statut)}${e.note ? `<small class="muted"> ${esc(e.note)}</small>` : ""}`),
-        voy.reparti ? "reste de l'enveloppe annuelle réparti" : "enveloppe de l'année consommée"].join(" · ")}</td></tr>`;
+        voy.reparti ? "reste de l'enveloppe annuelle réparti" : pv.voyAn[r.m.slice(0, 4)].lisse ? "enveloppe de l'année consommée" : "voyages datés seulement"].join(" · ")}</td></tr>`;
   const envRows = r.envies.map((e) => `<tr>
       <td><span class="tname"><i class="sw" style="background:${catColor(e.cat)}"></i>${esc(e.nom)}</span></td>
       <td class="r num muted">·</td><td class="r num"><b>${eur(e.prix)}</b></td><td class="xs">${e.auto ? "envie placée au premier mois possible" : "envie datée"}, en plus du budget</td></tr>`).join("");

@@ -49,7 +49,8 @@ export function buildPrev(M, I, P, opts = {}) {
   const rES = P.rendements?.salariale?.central ?? 0.04;
 
   // Enveloppe voyages : par année civile, ce qui reste (après le réel et les voyages datés)
-  // est réparti sur les mois prévus de l'année.
+  // est réparti sur les mois prévus de l'année, sauf si voyages_lissage = false (voyages datés seuls).
+  const lisse = P.voyages_lissage !== false;
   const env = M.budget.enveloppe_voyages_annuelle || (M.budgetCat(VOYAGES) || 0) * 12;
   const voyEvents = (m) => (P.evenements || []).filter((e) => e.mois === m && e.cat === VOYAGES);
   const voyAn = {};
@@ -57,8 +58,8 @@ export function buildPrev(M, I, P, opts = {}) {
     const reel = sum(M.months.filter((m) => m.startsWith(y)), (m) => M.catNet(m, VOYAGES));
     const ms = mois.filter((m) => m.startsWith(y));
     const dates = sum(ms, (m) => sum(voyEvents(m), (e) => e.montant));
-    const reste = Math.max(0, env - reel - dates);
-    voyAn[y] = { enveloppe: env, reel, dates, reste, parMois: ms.length ? reste / ms.length : 0, depasse: Math.max(0, reel + dates - env) };
+    const reste = lisse ? Math.max(0, env - reel - dates) : 0;
+    voyAn[y] = { enveloppe: env, reel, dates, reste, lisse, sous: Math.max(0, env - reel - dates), parMois: ms.length ? reste / ms.length : 0, depasse: Math.max(0, reel + dates - env) };
   }
 
   const soldes = { ...depart.soldes };
