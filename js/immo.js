@@ -52,6 +52,57 @@ export function viewImmo(I, sub, arg) {
   return viewCockpit(I);
 }
 
+// ------------------------------------------------------------ démarches (biens où une action est engagée)
+
+// Étapes d'une démarche sur un bien : suivi.json > biens.<id>.demarche.etape (écrit par /immo).
+const DEMARCHE = [
+  ["a_contacter", "À contacter"], ["contacte", "Contacté"], ["visite_demandee", "Visite demandée"],
+  ["visite_calee", "Visite calée"], ["visite_faite", "Visité"], ["offre", "Offre"],
+];
+const etapeIdx = (e) => Math.max(0, DEMARCHE.findIndex(([k]) => k === e));
+const etapeLbl = (e) => DEMARCHE[etapeIdx(e)][1];
+const etapeFlag = (e) => `<span class="flag ${etapeIdx(e) === 0 ? "f-todo" : etapeIdx(e) >= 3 ? "f-new" : "f-ok"}">${etapeLbl(e)}</span>`;
+const dots = (e) => `<span class="dots" title="${etapeIdx(e) + 1}/${DEMARCHE.length}">${DEMARCHE.map((_, i) => `<i class="${i <= etapeIdx(e) ? "on" : ""}"></i>`).join("")}</span>`;
+const rdvFmt = (r) => (r ? `${dShort(r.slice(0, 10))}${r.length > 10 ? ` à ${r.slice(11, 16).replace(":", " h ")}` : ""}` : "");
+
+// Biens suivis avec une démarche en cours (hors écartés), les plus avancés d'abord.
+function enCours(I) {
+  return Object.entries(I.suivi)
+    .filter(([id, s]) => s.demarche && s.statut !== "ecarte" && I.byId(id))
+    .map(([id, s]) => ({ a: I.byId(id), s, d: s.demarche, c: I.contacts.find((c) => c.id === s.demarche.contact) }))
+    .sort((p, q) => etapeIdx(q.d.etape) - etapeIdx(p.d.etape) || (p.d.depuis || "").localeCompare(q.d.depuis || ""));
+}
+
+function pipeRow({ a, s, d, c }) {
+  const last = d.historique?.at(-1);
+  return `<a class="pipe" href="${href(a.id)}">
+    <span class="tname">${esc(a.ville)} · ${String(a.surface).replace(".", ",")} m²${a.pieces > 1 ? ` · ${a.pieces} p.` : ""}<small>${eur(a.prix)} · ${esc(c?.nom || a.agence || "")}${c?.interlocuteur ? ` (${esc(c.interlocuteur.replace(/ \(.*\)/, ""))})` : ""}</small></span>
+    <span class="pipe-e">${etapeFlag(d.etape)}${dots(d.etape)}${d.rdv ? `<small class="warn">Visite le ${rdvFmt(d.rdv)}</small>` : ""}</span>
+    <span class="pipe-t">${last ? `<small class="muted">${dShort(last.date)} · ${esc(last.action)}</small>` : ""}<b>${esc(d.prochaine || "")}</b></span>
+    <span class="num pipe-r">${c ? relanceCell(c) : `<span class="muted">—</span>`}${s.questions_visite?.length ? `<small class="muted">${s.questions_visite.length} questions prêtes</small>` : ""}</span>
+  </a>`;
+}
+
+function panelEnCours(I, list) {
+  if (!list.length) return "";
+  const n = (k) => list.filter(({ d }) => d.etape === k).length;
+  return panel(`Mes biens en cours · ${list.length}`, `<div class="pipe pipe-h"><span class="lbl">Bien</span><span class="lbl">Étape</span><span class="lbl">Dernier échange · prochaine action</span><span class="lbl r">Relance</span></div>
+    <div class="tlist">${list.map(pipeRow).join("")}</div>
+    <p class="note">${n("a_contacter") ? `<span class="warn">${n("a_contacter")} à contacter</span> · ` : ""}${n("visite_demandee")} visite${n("visite_demandee") > 1 ? "s" : ""} demandée${n("visite_demandee") > 1 ? "s" : ""} · ${n("visite_calee")} calée${n("visite_calee") > 1 ? "s" : ""}. Clic = fiche avec les questions à poser. Après la visite, raconte-la à /immo.</p>`,
+    { right: `<span class="muted xs">Les autres annonces sont dans le classement</span>` });
+}
+
+function panelDemarche(I, s) {
+  const d = s.demarche;
+  const c = I.contacts.find((x) => x.id === d.contact);
+  const cur = etapeIdx(d.etape);
+  return panel("Ma démarche", `<ol class="dsteps">${DEMARCHE.map(([, l], i) => `<li class="${i < cur ? "done" : i === cur ? "cur" : ""}">${l}</li>`).join("")}</ol>
+    ${d.rdv ? `<div class="callout"><div class="lbl">Visite</div><p><b>${rdvFmt(d.rdv)}</b>${d.rdv_avec ? ` · ${esc(d.rdv_avec)}` : ""}</p></div>` : ""}
+    ${d.prochaine ? `<div class="callout"><div class="lbl">Prochaine action</div><p>${esc(d.prochaine)}</p></div>` : ""}
+    <ul class="pts">${(d.historique || []).map((h) => `<li><span class="num">${dShort(h.date)}</span> · ${esc(h.action)}</li>`).join("")}</ul>
+    ${c ? `<p class="note">Contact : <a href="#/immo/contacts">${esc(c.nom)}${c.interlocuteur ? ` · ${esc(c.interlocuteur)}` : ""}</a>${c.tel_direct || c.tel ? ` · ${esc(c.tel_direct || c.tel)}` : ""}</p>` : ""}`);
+}
+
 // ------------------------------------------------------------ cockpit
 
 function ranked(I, { exclus = false } = {}) {
@@ -96,7 +147,9 @@ function viewCockpit(I) {
     </details>`;
   }).join("");
 
-  const top = bons.slice(0, 6).map(({ a, x }) => rowAnnonce(I, a, x, true)).join("");
+  const pipe = enCours(I);
+  const dejaSuivis = new Set(pipe.map(({ a }) => a.id));
+  const top = bons.filter(({ a }) => !dejaSuivis.has(a.id)).slice(0, 6).map(({ a, x }) => rowAnnonce(I, a, x, true)).join("");
 
   const marche = I.marche.communes.map((c) => {
     const med = c.prix.petites_surfaces.mediane;
@@ -123,6 +176,7 @@ function viewCockpit(I) {
       ${kpi("Qui passent les filtres", `${go.length}`, `${bons.length - go.length} trop chères · ${actives.length - bons.length} écartées<a href="#/immo/annonces">Voir le classement →</a>`, go.length ? "k-ok" : "")}
       ${kpi("Visites faites", `${visites}`, `${chatou ? `Prix FAI max ≈ ${Math.round(C.criteres.prix_fai_max / chatou.prix.petites_surfaces.mediane)} m² à Chatou (médiane)` : ""}<a href="#/immo/veille">Veille et alertes →</a>`)}
     </div>
+    ${panelEnCours(I, pipe)}
     <div class="grid g-12">
       ${panel("Feuille de route", `<div class="steps-l">${steps}</div>`, { right: `<span class="muted xs">Mise à jour par /immo point</span>` })}
       <div class="col-stack-v">
@@ -133,7 +187,7 @@ function viewCockpit(I) {
           <p class="note">Prix médian des ventes réelles ≤ ${I.marche.petite_surface_max} m² (DVF 2023-2025) · loyer T1-T2 nu charges comprises (ANIL 2025). Le brut théorique ne compte ni frais de notaire ni charges.</p>`, { right: `<a href="#/immo/marche">Détail →</a>` })}
       </div>
     </div>
-    ${panel("Meilleures opportunités du moment", tableAnnonces(top, "ann-top"), { right: `<a href="#/immo/annonces">Classement complet →</a>` })}`;
+    ${panel(`Meilleures opportunités du moment${dejaSuivis.size ? " · hors biens en cours" : ""}`, tableAnnonces(top, "ann-top"), { right: `<a href="#/immo/annonces">Classement complet →</a>` })}`;
 }
 
 // ------------------------------------------------------------ annonces
@@ -166,7 +220,7 @@ function rowAnnonce(I, a, x) {
   return `<tr class="clk ${x.exclus.length ? "out" : ""}" data-href="${href(a.id)}">
     <td data-v="${x.note}">${noteBadge(x.note)}</td>
     <td class="bien" data-v="${esc(a.ville)}" data-f="${esc(a.ville)}"><a href="${href(a.id)}"><b>${esc(a.ville)}</b>${a.quartier ? ` <span class="muted">· ${esc(a.quartier)}</span>` : ""}
-      ${nouveau ? `<span class="flag f-new">Nouveau</span>` : ""}${baisse ? `<span class="flag f-down">Prix en baisse</span>` : ""}${st !== "nouveau" ? `<span class="flag f-st">${STATUTS[st]}</span>` : ""}
+      ${nouveau ? `<span class="flag f-new">Nouveau</span>` : ""}${baisse ? `<span class="flag f-down">Prix en baisse</span>` : ""}${I.suivi[a.id]?.demarche && st !== "ecarte" ? etapeFlag(I.suivi[a.id].demarche.etape) : st !== "nouveau" ? `<span class="flag f-st">${STATUTS[st]}</span>` : ""}
       <small>${esc(a.titre).slice(0, 70)}</small></a></td>
     <td class="r num" data-v="${a.surface ?? ""}">${a.surface ? `${String(a.surface).replace(".", ",")} m²` : "—"}<small class="muted">${a.pieces ? ` · ${a.pieces}p` : ""}</small></td>
     <td class="r num" data-v="${a.prix}"><b>${eur(a.prix)}</b></td>
@@ -348,6 +402,16 @@ const CHECK_VISITE = [
   "Locataire en place ? bail, loyer, date de fin",
 ];
 
+// Questions propres au bien (tirées de l'annonce) + mes retours une fois la visite faite.
+function panelVisite(s) {
+  const v = s.visite;
+  const q = s.questions_visite || [];
+  return panel(v ? `Mes retours de visite · ${v.date ? dShort(v.date) : ""}` : "Questions à poser pour ce bien", `
+    ${v ? `${v.avec ? `<p class="note">Avec ${esc(v.avec)}</p>` : ""}<ul class="pts">${(v.constats || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>${v.ressenti ? `<div class="callout"><div class="lbl">Mon ressenti</div><p>${esc(v.ressenti)}</p></div>` : ""}` : ""}
+    ${q.length ? `${v ? `<div class="lbl">Questions préparées</div>` : ""}<ul class="checks">${q.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : `<p class="empty">Pas encore de questions propres à ce bien : demande-les à /immo.</p>`}
+    <p class="note">${v ? "Corrige ou complète en racontant la visite à /immo." : "Après la visite, raconte-la à /immo (constats, ressenti, réponses) : elle s'affichera ici."}</p>`);
+}
+
 function viewBien(I, id) {
   const a = I.byId(id);
   if (!a) return `${head([["Immo", "#/immo"], ["Annonce"]], "Annonce introuvable")}<p class="empty"><a href="#/immo/annonces">← Retour aux annonces</a></p>`;
@@ -371,7 +435,7 @@ function viewBien(I, id) {
 
   return `${head([["Immo", "#/immo"], ["Annonces", "#/immo/annonces"], [`${a.ville} · ${String(a.surface).replace(".", ",")} m²`]],
     `${esc(a.ville)} · ${String(a.surface).replace(".", ",")} m²${a.pieces ? ` · ${a.pieces} p.` : ""} · ${eur(a.prix)}`,
-    { sub: esc(a.titre), right: `${st !== "nouveau" ? `<span class="flag f-st">${STATUTS[st]}</span>` : ""}${ext(a.url, "Voir l'annonce")}` })}
+    { sub: esc(a.titre), right: `${s?.demarche && st !== "ecarte" ? etapeFlag(s.demarche.etape) : st !== "nouveau" ? `<span class="flag f-st">${STATUTS[st]}</span>` : ""}${ext(a.url, "Voir l'annonce")}` })}
     ${a.photos?.length ? `<div class="photos">${a.photos.map((p) => `<img src="${esc(p)}" alt="" loading="lazy" referrerpolicy="no-referrer">`).join("")}</div>` : ""}
     <div class="grid g-12">
       ${panel("Profil du bien", `<div class="profil"><div class="big-note ${noteCls(base.note)}"><b>${base.note.toFixed(1).replace(".", ",")}</b><small>/20</small></div>${attrBars(base.attrs)}</div>
@@ -382,6 +446,7 @@ function viewBien(I, id) {
         ${base.atouts.length ? `<ul class="pts p-ok">${base.atouts.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
         ${s?.verdict ? `<div class="callout"><div class="lbl">Avis après analyse · ${esc(s.maj || "")}</div><p>${esc(s.verdict)}</p></div>` : ""}`)}
     </div>
+    ${s?.demarche ? `<div class="grid g-11">${panelDemarche(I, s)}${panelVisite(s)}</div>` : ""}
     ${garePanel(I, base.gare)}
     ${panel("Simulateur", `${simControls(a, x)}<div id="simu-out">${simOut(I, a, x)}</div>`, { right: `<span class="muted xs">Bouge les curseurs : tout se recalcule</span>`, cls: "simu" })}
     <div class="grid g-11">
@@ -389,7 +454,9 @@ function viewBien(I, id) {
       ${panel("Hypothèses utilisées", hypoTable(x), { right: `<span class="muted xs">Hypothèse = à remplacer par un document</span>` })}
     </div>
     <div class="grid g-11">
-      ${panel(s?.visite ? `Visite · ${esc(s.visite.date || "")}` : "Préparer la visite", `${s?.visite ? `<ul class="pts">${(s.visite.constats || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
+      ${s?.demarche ? panel("Notes et checklist générale", `${s.notes ? `<p class="soft">${esc(s.notes)}</p>` : ""}
+        <details class="desc"><summary>Checklist générale de visite</summary><ul class="checks">${CHECK_VISITE.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></details>`)
+      : panel(s?.visite ? `Visite · ${esc(s.visite.date || "")}` : "Préparer la visite", `${s?.visite ? `<ul class="pts">${(s.visite.constats || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
         ${s?.notes ? `<p class="soft">${esc(s.notes)}</p>` : ""}
         <div class="lbl">À vérifier sur place</div><ul class="checks">${CHECK_VISITE.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
         <p class="note">Après la visite, raconte-la à /immo : notes, statut et hypothèses corrigées s'afficheront ici.</p>`)}
