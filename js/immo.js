@@ -24,7 +24,7 @@ const srcBadge = (s) => `<span class="src ${SRC[s]?.cls || ""}">${SRC[s]?.lbl ||
 const verdictTag = (v) => `<span class="verdict ${v.cls}">${v.lbl}</span>`;
 
 function immoTabs(active) {
-  return tabs([["", "Cockpit", "#/immo"], ["annonces", "Annonces", "#/immo/annonces"],
+  return tabs([["", "Cockpit", "#/immo"], ["biens", "Mes biens", "#/immo/biens"], ["annonces", "Annonces", "#/immo/annonces"],
     ["contacts", "Contacts", "#/immo/contacts"], ["marche", "Marché", "#/immo/marche"], ["veille", "Veille", "#/immo/veille"]], active);
 }
 
@@ -45,6 +45,7 @@ export function viewImmo(I, sub, arg) {
     return `${head([["Immo"]], "Projet immo")}<p class="empty">Aucune donnée immo dans patrimoine-data (dossier immo/). Lance <code>/immo</code> dans Claude.</p>`;
   }
   if (sub === "bien") return viewBien(I, decodeURIComponent(arg || ""));
+  if (sub === "biens") return viewMesBiens(I);
   if (sub === "annonces") return viewAnnonces(I);
   if (sub === "contacts") return viewContacts(I);
   if (sub === "marche") return viewMarche(I);
@@ -250,6 +251,66 @@ function viewAnnonces(I) {
     ${panel("Classement", tableAnnonces(list.map(({ a, x }) => rowAnnonce(I, a, x)).join("")), { right: `<span class="muted xs">Clic sur une colonne = tri · Note /20 = rendement ×3, gare ×3, prix vs marché ×2, DPE ×2, secteur, copro, trésorerie</span>` })}
     ${retirees.length ? panel(`Retirées du marché · ${retirees.length}`, `<div class="tlist">${retirees.map((a) => `<a class="trow" href="${href(a.id)}"><span class="tname">${esc(a.ville)} · ${a.surface} m²<small>${esc(a.titre).slice(0, 60)}</small></span><span class="num">${eur(a.prix)}</span><span class="num muted xs">vue du ${dShort(a.premiere_vue)} au ${dShort(a.retrait || a.derniere_vue)}</span></a>`).join("")}</div>
       <p class="note">Une annonce retirée vite = un prix juste. Ça calibre tes offres.</p>`) : ""}`;
+}
+
+// ------------------------------------------------------------ mes biens (comparatif des biens en cours)
+
+// Une ligne par critère, une colonne par bien. `best` = sens du meilleur ("min" | "max"), mis en vert.
+const CMP = [
+  ["Démarche", [
+    ["Étape", ({ s }) => [null, `${etapeFlag(s.demarche.etape)}${s.demarche.rdv ? `<small class="warn">Visite le ${rdvFmt(s.demarche.rdv)}</small>` : ""}`]],
+    ["Prochaine action", ({ s }) => [null, `<small class="soft">${esc(s.demarche.prochaine || "—")}</small>`]],
+    ["Agence", ({ a, c }) => [null, esc(c?.nom || a.agence || "—")]],
+  ]],
+  ["Verdict", [
+    ["Note /20", ({ x }) => [x.note, noteBadge(x.note)], "max"],
+    ["Verdict de l'app", ({ x }) => [null, verdictTag(x.verdict)]],
+    ["Prix maximum à payer", ({ x }) => { const m = Math.min(x.sim.prixCibleMin, x.sim.prixMaxBudget); return [m, eur(m)]; }],
+  ]],
+  ["Prix", [
+    ["Prix FAI", ({ a }) => [a.prix, `<b>${eur(a.prix)}</b>`], "min"],
+    ["Prix hors honoraires", ({ a }) => [a.prix_net_vendeur, a.prix_net_vendeur ? eur(a.prix_net_vendeur) : `<span class="muted">n.c.</span>`]],
+    ["€/m² · écart à la médiane", ({ x }) => [x.m2, `${m2fmt(x.m2)}${x.m2 && x.med ? ` <small class="${x.m2 / x.med > 1.1 ? "down" : "muted"}">${x.m2 > x.med ? "+" : "−"}${Math.round(Math.abs(x.m2 / x.med - 1) * 100)} %</small>` : ""}`], "min"],
+    ["Coût total (notaire, meubles…)", ({ x }) => [x.sim.cout, `${eur(x.sim.cout)}${x.sim.budgetOk ? "" : ` <small class="down">hors budget</small>`}`], "min"],
+    ["En ligne depuis", ({ a }) => [null, a.publication ? `${dShort(a.publication)} ${a.publication.slice(0, 4)}` : `vue le ${dShort(a.premiere_vue)}`]],
+  ]],
+  ["Le bien", [
+    ["Surface", ({ a }) => [a.surface, `${String(a.surface).replace(".", ",")} m²${a.pieces ? ` · ${a.pieces} p.` : ""}`], "max"],
+    ["Étage", ({ a }) => [null, a.etage != null ? `${a.etage === 0 ? "RDC" : a.etage === 1 ? "1er" : `${a.etage}e`}${a.etages_immeuble ? ` / ${a.etages_immeuble}` : ""}${a.ascenseur ? " · ascenseur" : a.ascenseur === false ? " · sans ascenseur" : ""}` : "n.c."]],
+    ["Extérieur", ({ a }) => [null, a.exterieur ? "Oui" : a.exterieur === false ? `<span class="muted">Non indiqué</span>` : "n.c."]],
+    ["DPE / GES", ({ a }) => [null, `${dpeChip(a.dpe)} <small class="muted">GES ${esc(a.ges || "?")}</small>`]],
+    ["Chauffage", ({ a }) => [null, `<small>${esc(a.chauffage || "n.c.")}</small>`]],
+    ["Construction", ({ a }) => [null, a.annee_construction || "n.c."]],
+    ["Gare à pied", ({ x }) => [x.gare?.min ?? null, gareCell(x.gare)], "min"],
+  ]],
+  ["Copropriété", [
+    ["Charges / an", ({ x }) => [x.h.charges_copro_an.v, `${eur(x.h.charges_copro_an.v)} ${srcBadge(x.h.charges_copro_an.src)}`], "min"],
+    ["Taxe foncière / an", ({ x }) => [x.h.taxe_fonciere.v, `${eur(x.h.taxe_fonciere.v)} ${srcBadge(x.h.taxe_fonciere.src)}`], "min"],
+    ["Lots · procédure", ({ a }) => [null, `<small>${a.lots_copro ? `${a.lots_copro} lots` : "n.c."}${typeof a.procedure_copro === "string" ? ` · ${esc(a.procedure_copro)}` : ""}</small>`]],
+  ]],
+  ["Rentabilité", [
+    ["Loyer HC retenu", ({ x }) => [x.h.loyer_hc.v, `${eur(x.h.loyer_hc.v)} ${srcBadge(x.h.loyer_hc.src)}`], "max"],
+    ["Rendement brut", ({ x }) => [x.sim.rdtBrut, `<b>${pct1(x.sim.rdtBrut)}</b>`], "max"],
+    ["Effort mensuel après impôt", ({ x }) => [x.sim.cfApres, `<span class="${x.sim.cfApres < 0 ? "down" : "up"}">${x.sim.cfApres < 0 ? "−" : "+"}${eur(Math.abs(x.sim.cfApres))}</span><small class="muted">/mois</small>`], "max"],
+    ["Endettement", ({ x }) => [x.sim.endettement, pct(x.sim.endettement)], "min"],
+  ]],
+];
+
+function viewMesBiens(I) {
+  const list = enCours(I).map((p) => ({ ...p, x: I.analyses.get(p.a.id) }));
+  const body = !list.length ? `<p class="empty">Aucun bien en cours : dis à /immo sur quel bien tu engages une démarche.</p>` : `<div class="scroll-x"><table class="grid-t cmp">
+    <thead><tr><th></th>${list.map(({ a }) => `<th><a href="${href(a.id)}"><b>${esc(a.ville)} · ${String(a.surface).replace(".", ",")} m²</b><small class="muted">${eur(a.prix)}</small></a></th>`).join("")}</tr></thead>
+    <tbody>${CMP.map(([grp, rows]) => `<tr class="cmp-g"><td colspan="${list.length + 1}">${grp}</td></tr>${rows.map(([lbl, f, best]) => {
+      const cells = list.map((p) => f(p));
+      const nums = cells.map(([v]) => v).filter((v) => v != null);
+      const top = best && nums.length > 1 && new Set(nums).size > 1 ? (best === "min" ? Math.min(...nums) : Math.max(...nums)) : null;
+      return `<tr><td class="muted">${lbl}</td>${cells.map(([v, h]) => `<td class="${top != null && v === top ? "best" : ""}">${h}</td>`).join("")}</tr>`;
+    }).join("")}`).join("")}</tbody></table></div>
+    <p class="note">En vert : le meilleur bien sur le critère. Chiffres aux hypothèses de l'app (prix affiché, taux ${pct(I.cfg.financement.taux, 2)}) ; un badge « Hypothèse » = valeur à remplacer par un document.</p>`;
+  return `${head([["Immo", "#/immo"], ["Mes biens"]], "Mes biens", { sub: `${list.length} bien${list.length > 1 ? "s" : ""} où une démarche est engagée · clic sur un bien = fiche` })}
+    ${immoTabs("biens")}
+    ${panel("Comparatif", body)}
+    ${list.length ? panel("Classement sur tous les critères", tableAnnonces(list.map(({ a, x }) => rowAnnonce(I, a, x)).join(""), "ann-mes"), { right: `<span class="muted xs">Clic sur une colonne = tri · notes /20 par critère</span>` }) : ""}`;
 }
 
 // ------------------------------------------------------------ contacts
