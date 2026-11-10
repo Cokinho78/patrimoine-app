@@ -169,7 +169,11 @@ export function simuler(I, h) {
   const endettement = ((mens + assur) + F.loyer_rp) / (F.revenus_banque + F.part_loyer_retenue * loyerM);
   const cible = I.cfg.cible.rendement_brut;
 
+  const tri = (I.cfg.cible.tri_horizons || [10, 15, 20])
+    .map((H) => triApport(I, h, { prix, cout, emprunt, annees }, H)).filter(Boolean);
+
   return {
+    tri,
     notaire, cout, emprunt, mensualite: mens, assurance: assur,
     rdtBrut: prix ? loyerAn / prix : 0,
     rdtNet: cout ? (a1.loyer - a1.charges) / cout : 0,
@@ -190,6 +194,64 @@ export function simuler(I, h) {
     patrimoine20: annees[19].patrimoine,
     effortTotal: annees.slice(0, h.duree.v).reduce((s, x) => s + Math.min(0, x.cfApres), 0),
   };
+}
+
+// ------------------------------------------------------------ TRI sur l'apport
+
+// Taux qui annule la VAN des flux (bissection : un seul changement de signe attendu).
+export function irr(flux) {
+  const van = (t) => flux.reduce((s, f, i) => s + f / (1 + t) ** i, 0);
+  let lo = -0.99;
+  let hi = 1;
+  if (van(lo) * van(hi) > 0) return null;
+  for (let k = 0; k < 200; k++) {
+    const mid = (lo + hi) / 2;
+    if (van(lo) * van(mid) <= 0) hi = mid; else lo = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+// Abattements pour durée de détention (plus-values immobilières des particuliers).
+function abattements(H) {
+  let ir = 0;
+  let ps = 0;
+  for (let y = 6; y <= H; y++) {
+    ir += y <= 21 ? 0.06 : y === 22 ? 0.04 : 0;
+    ps += y <= 21 ? 0.0165 : y === 22 ? 0.016 : y <= 30 ? 0.09 : 0;
+  }
+  return { ir: Math.min(1, ir), ps: Math.min(1, ps) };
+}
+
+// Flux : année 0 = −apport ; années 1..H = cash-flow après impôt (loyers − charges − crédit − impôt) ;
+// année H : + produit net de revente − capital restant dû − impôt sur la plus-value.
+function triApport(I, h, s, H) {
+  const { exploitation: E, fiscalite: T } = I.cfg;
+  if (H > s.annees.length) return null;
+  const mise = Math.min(h.apport.v, s.cout);
+  if (mise <= 0) return null;
+  const y = s.annees[H - 1];
+  const venteFai = s.prix * (1 + E.valorisation) ** H;
+  const venteNette = venteFai / (1 + (E.frais_revente_pct ?? 0.05));
+  // Prix d'acquisition : prix net vendeur + forfait frais d'acquisition 7,5 % (pas de forfait travaux 15 % : prudent).
+  // Travaux réels ajoutés ; les amortissements déduits sur l'immeuble et les travaux sont réintégrés (LF 2025),
+  // ceux du mobilier non. Hypothèse prudente : l'amortissement utilisé porte d'abord sur l'immeuble.
+  const acquisition = h.prix_net_vendeur.v * (1 + (T.pv_forfait_acquisition ?? 0.075)) + h.travaux.v;
+  let amortImmeuble = 0;
+  let amortUtilise = 0;
+  for (let k = 1; k <= H; k++) {
+    amortImmeuble += (s.prix * (1 - E.part_terrain)) / E.bati_amort_ans + (k <= E.travaux_amort_ans ? h.travaux.v / E.travaux_amort_ans : 0);
+    amortUtilise += s.annees[k - 1].amort;
+  }
+  const reintegre = Math.min(amortUtilise, amortImmeuble);
+  const pvBrute = Math.max(0, venteNette - acquisition + reintegre);
+  const ab = abattements(H);
+  const impotPV = pvBrute * (1 - ab.ir) * (T.pv_ir ?? 0.19) + pvBrute * (1 - ab.ps) * (T.pv_ps ?? 0.172);
+  const flux = [-mise];
+  for (let k = 1; k <= H; k++) flux.push(s.annees[k - 1].cfApres);
+  const revente = venteNette - y.crd - impotPV;
+  flux[H] += revente;
+  const cumCf = flux.slice(1).reduce((a, b) => a + b, 0) - revente;
+  return { H, tri: irr(flux), mise, cumCf, venteFai, venteNette, crd: y.crd, pvBrute, reintegre, impotPV, revente, flux };
 }
 
 // ------------------------------------------------------------ verdict & note

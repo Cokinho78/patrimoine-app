@@ -392,12 +392,35 @@ function simOut(I, a, x) {
         <p><b>${eur(S.patrimoine10)}</b> à 10 ans · <b>${eur(S.patrimoine20)}</b> à 20 ans, pour un effort cumulé de ${eur(-S.effortTotal)} sur la durée du prêt.
         <span class="muted">Valorisation +${pct(I.cfg.exploitation.valorisation)}/an : hypothèse, pas une prévision.</span></p></div>
     </div>
+    ${triPanel(I, S)}
     ${panel("Patrimoine net (valeur − capital restant dû)", proj, { cls: "flat" })}
     <div class="scroll-x"><table class="grid-t proj">
       <thead><tr><th>Année</th><th class="r">Loyers</th><th class="r">Charges</th><th class="r">Intérêts</th><th class="r">Amort. utilisé</th><th class="r">Imposable</th><th class="r">Impôt</th><th class="r">Cash-flow / an après impôt</th><th class="r">Capital dû</th></tr></thead>
       <tbody>${yrs.map((y) => `<tr><td>${y.an}</td><td class="r num">${eur(y.loyer)}</td><td class="r num">${eur(y.charges)}</td><td class="r num">${eur(y.interets)}</td><td class="r num muted">${eur(y.amort)}</td><td class="r num">${eur(y.imposable)}</td><td class="r num">${eur(y.impot)}</td><td class="r num ${y.cfApres < 0 ? "down" : "up"}">${eur(y.cfApres)}</td><td class="r num muted">${eur(y.crd)}</td></tr>`).join("")}</tbody>
     </table></div>
     <p class="note">LMNP au réel : l'amortissement efface l'impôt tant qu'il reste du stock, d'où un impôt nul les premières années. Comparaison micro-BIC (abattement 50 %) : environ ${eur(S.microImpot)} d'impôt dès l'an 1. ${esc(I.cfg.fiscalite.plus_value_note)}</p>`;
+}
+
+// TRI sur l'apport : taux qui annule la VAN, revente supposée à 10 / 15 / 20 ans.
+function triPanel(I, S) {
+  if (!S.tri?.length) return "";
+  const E = I.cfg.exploitation;
+  const T = I.cfg.fiscalite;
+  const fmt = (t) => (t == null ? "–" : pct1(t));
+  const cols = S.tri.map((t) => `<th class="r">${t.H} ans</th>`).join("");
+  const row = (lbl, f, cls = "") => `<tr><td>${lbl}</td>${S.tri.map((t) => `<td class="r num ${cls}">${f(t)}</td>`).join("")}</tr>`;
+  const sgn = (x) => `${x < 0 ? "−" : "+"}${eur(Math.abs(x))}`;
+  return panel("TRI sur ton apport", `<div class="grid g-4 simk">${S.tri.map((t) => kpi(`Revente à ${t.H} ans`, fmt(t.tri), `${eur(t.mise)} investis`, t.tri != null && t.tri < 0 ? "k-bad" : "")).join("")}</div>
+    <div class="scroll-x"><table class="grid-t proj"><thead><tr><th>Flux</th>${cols}</tr></thead><tbody>
+      ${row("Apport (année 0)", (t) => `−${eur(t.mise)}`, "down")}
+      ${row("Cash-flows cumulés après impôt", (t) => sgn(t.cumCf), "")}
+      ${row(`Prix de revente (+${pct(E.valorisation)}/an)`, (t) => eur(t.venteFai))}
+      ${row(`Net vendeur (honoraires ${pct(E.frais_revente_pct ?? 0.05)})`, (t) => eur(t.venteNette))}
+      ${row("Capital restant dû", (t) => `−${eur(t.crd)}`, "down")}
+      ${row("Impôt sur la plus-value", (t) => (Math.round(t.impotPV) ? `−${eur(t.impotPV)}` : "0 €"), "down")}
+      ${row("Encaissé à la revente", (t) => eur(t.revente), "up")}
+    </tbody></table></div>
+    <p class="note">TRI = taux d'actualisation qui annule la valeur actuelle nette des flux : −apport l'année 0, cash-flow après impôt chaque année, produit net de la revente la dernière année. Hypothèses : valorisation +${pct(E.valorisation)}/an (hypothèse, pas une prévision) ; plus-value imposée à ${pct(T.pv_ir ?? 0.19)} + ${pct(T.pv_ps ?? 0.172, 1)} après abattements pour durée de détention, prix d'acquisition majoré du forfait de ${pct(T.pv_forfait_acquisition ?? 0.075, 1)} et des travaux, amortissements de l'immeuble réintégrés (LF 2025) ; pas d'indemnité de remboursement anticipé, pas de surtaxe. ${esc(T.pv_note || "")}</p>`, { cls: "flat" });
 }
 
 function garePanel(I, g) {
