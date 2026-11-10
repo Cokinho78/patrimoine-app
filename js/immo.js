@@ -457,7 +457,7 @@ function loyerPanel(I, a, x) {
       <li><span>Loyer de marché ${L.typo} <b>nu, charges comprises</b> à ${esc(a.ville)} : ${L.m2.toLocaleString("fr-FR")} €/m² × ${a.surface} m²</span><b>${eur(base)}</b>${srcBadge("officiel")}</li>
       <li class="sub"><span>Fourchette à 95 % (${L.bas.toLocaleString("fr-FR")} – ${L.haut.toLocaleString("fr-FR")} €/m²) · ${L.nb_annonces} annonces · R² ${L.r2.toLocaleString("fr-FR")}</span><b>${eur(h.loyer_ref_bas)} – ${eur(h.loyer_ref_haut)}</b></li>
       <li><span>+ prime meublé ${pct(h.meuble_prime.v)}</span><b>+${eur(base * h.meuble_prime.v)}</b>${srcBadge("hypothese")}</li>
-      <li><span>− provision de charges refacturées (${pct(E.charges_recuperables_part)} de ${eur(h.charges_copro_an.v)}/an)</span><b>−${eur(h.provision.v)}</b>${srcBadge(h.charges_copro_an.src)}</li>
+      <li><span>− provision de charges refacturées (${pct(h.charges_recup_part.v)} de ${eur(h.charges_copro_an.v)}/an)</span><b>−${eur(h.provision.v)}</b>${srcBadge(h.charges_copro_an.src)}</li>
       <li class="tot"><span>Loyer meublé hors charges estimé</span><b>${eur(calc)}</b>${srcBadge("calcul")}</li>
       ${s ? `<li class="tot ret"><span>Loyer retenu après vérification : ${esc(s.src)}</span><b>${eur(s.v)}</b>${srcBadge("suivi")}</li>` : ""}
     </ol>

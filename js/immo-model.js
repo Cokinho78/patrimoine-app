@@ -77,8 +77,9 @@ export function hypotheses(I, a, over = {}) {
   h.charges_copro_an = pick("charges_copro_an", a.charges_copro_an
     ? v(a.charges_copro_an, "annonce", "Charges de copropriété annuelles")
     : v(Math.round((E.charges_loc_m2_mois_defaut * 12 * a.surface) / E.charges_recuperables_part), "hypothese", "Charges de copro absentes de l'annonce : à demander"));
-  h.provision = v(Math.round((h.charges_copro_an.v * E.charges_recuperables_part) / 12), "hypothese",
-    `${Math.round(E.charges_recuperables_part * 100)} % des charges de copro refacturées au locataire. ${notes.charges_recuperables_part || ""}`);
+  h.charges_recup_part = pick("charges_recuperables_part", v(E.charges_recuperables_part, "hypothese", notes.charges_recuperables_part || ""));
+  h.provision = v(Math.round((h.charges_copro_an.v * h.charges_recup_part.v) / 12), h.charges_recup_part.src,
+    `${Math.round(h.charges_recup_part.v * 100)} % des charges de copro refacturées au locataire. ${h.charges_recup_part.note || ""}`);
   h.meuble_prime = v(over.meuble_prime ?? E.meuble_prime, over.meuble_prime != null ? "calcul" : "hypothese", notes.meuble_prime || "");
 
   const loyerCalc = h.loyer_ref.v != null ? Math.round(h.loyer_ref.v * (1 + h.meuble_prime.v) - h.provision.v) : null;
@@ -123,7 +124,7 @@ export function simuler(I, h) {
     const idx = (1 + E.indexation_loyer) ** (y - 1);
     const inf = (1 + E.inflation_charges) ** (y - 1);
     const loyer = loyerM * 12 * (1 - vac) * idx;
-    const coproNonRecup = h.charges_copro_an.v * (1 - E.charges_recuperables_part);
+    const coproNonRecup = h.charges_copro_an.v * (1 - h.charges_recup_part.v);
     const charges = (h.taxe_fonciere.v + coproNonRecup + E.pno + E.cfe + E.comptable) * inf
       + loyer * (E.entretien_pct_loyer + E.gestion_pct);
     let interets = 0;
