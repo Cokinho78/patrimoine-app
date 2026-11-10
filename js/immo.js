@@ -376,7 +376,9 @@ function simOut(I, a, x) {
   const C = I.cfg.cible;
   const yrs = [1, 2, 3, 5, 10, 15, 20, 25].map((y) => S.annees[y - 1]).filter(Boolean);
   const proj = line(S.annees.map((y) => ({ label: `${y.an}`, v: Math.round(y.patrimoine), tip: `Année ${y.an}\nValeur ${eur(y.valeur)} − capital restant dû ${eur(y.crd)}\n= ${eur(y.patrimoine)}\nCash-flow après impôt ${eur(y.cfApres)}` })), { height: 200 });
-  return `<div class="grid g-4 simk">
+  const TP = S.triPrincipal;
+  return `<div class="grid g-5 simk">
+      ${TP ? kpi(`TRI ${TP.H} ans`, TP.tri == null ? "–" : pct1(TP.tri), `sur ${eur(TP.mise)} d'apport · revente à ${TP.H} ans, détail plus bas`, TP.tri != null && TP.tri < 0 ? "k-bad" : "") : ""}
       ${kpi("Rendement brut", pct1(S.rdtBrut), `${meter(S.rdtBrut * 100, C.rendement_brut * 100, S.rdtBrut >= C.rendement_brut ? "var(--accent)" : S.rdtBrut >= C.rendement_brut_min ? "var(--warn)" : "var(--down)", 8)}cible ${pct1(C.rendement_brut)} · net ${pct1(S.rdtNet)} · net-net ${pct1(S.rdtNetNet)}`, S.rdtBrut >= C.rendement_brut_min ? "k-ok" : "k-bad")}
       ${kpi("Effort mensuel", `${S.cfApres < 0 ? "−" : "+"}${eur(Math.abs(S.cfApres))}<small>/mois</small>`, `avant impôt ${S.cfAvant < 0 ? "−" : "+"}${eur(Math.abs(S.cfAvant))} · impôt moyen ${eur(S.impot10 / 12)}/mois sur 10 ans`, S.cfApres < -300 ? "k-bad" : "")}
       ${kpi("Crédit", `${eur(S.mensualite + S.assurance)}<small>/mois</small>`, `${eur(S.emprunt)} empruntés · endettement ${pct(S.endettement)} (max 35 %)`, S.endettement > 0.35 ? "k-bad" : "")}
@@ -401,7 +403,7 @@ function simOut(I, a, x) {
     <p class="note">LMNP au réel : l'amortissement efface l'impôt tant qu'il reste du stock, d'où un impôt nul les premières années. Comparaison micro-BIC (abattement 50 %) : environ ${eur(S.microImpot)} d'impôt dès l'an 1. ${esc(I.cfg.fiscalite.plus_value_note)}</p>`;
 }
 
-// TRI sur l'apport : taux qui annule la VAN, revente supposée à 10 / 15 / 20 ans.
+// TRI sur l'apport : taux qui annule la VAN, revente supposée à chaque horizon de cible.tri_horizons.
 function triPanel(I, S) {
   if (!S.tri?.length) return "";
   const E = I.cfg.exploitation;

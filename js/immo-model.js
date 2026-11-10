@@ -170,11 +170,13 @@ export function simuler(I, h) {
   const endettement = ((mens + assur) + F.loyer_rp) / (F.revenus_banque + F.part_loyer_retenue * loyerM);
   const cible = I.cfg.cible.rendement_brut;
 
-  const tri = (I.cfg.cible.tri_horizons || [10, 15, 20])
+  const tri = (I.cfg.cible.tri_horizons || [10, 15, 20, 25])
     .map((H) => triApport(I, h, { prix, cout, emprunt, annees }, H)).filter(Boolean);
+  const hPrincipal = I.cfg.cible.tri_horizon_principal ?? 25;
+  const triPrincipal = tri.find((t) => t.H === hPrincipal) || tri.at(-1) || null;
 
   return {
-    tri,
+    tri, triPrincipal,
     notaire, cout, emprunt, mensualite: mens, assurance: assur,
     rdtBrut: prix ? loyerAn / prix : 0,
     rdtNet: cout ? (a1.loyer - a1.charges) / cout : 0,
